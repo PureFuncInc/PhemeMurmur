@@ -4,6 +4,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
+    private var cancelMenuItem: NSMenuItem!
+    private var escMonitor: Any?
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
@@ -18,12 +20,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Load API key
-        apiKey = Config.loadAPIKey()
-        if apiKey == nil {
-            print("Warning: API key not found at \(Config.apiKeyPath)")
+        if let config = Config.loadConfig() {
+            apiKey = config.apiKey
+        } else {
+            print("Warning: Config not found at \(Config.configPath)")
             print("Create the file with your OpenAI API key:")
-            print("  mkdir -p ~/.config/phememurmur")
-            print("  echo 'sk-...' > ~/.config/phememurmur/api_key")
+            print("  mkdir -p ~/.config/pheme-murmur")
+            print("  echo '{\"openai-api-key\": \"sk-...\"}' > ~/.config/pheme-murmur/config.json")
         }
 
         // Setup menu bar
@@ -34,26 +37,46 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         statusMenu.addItem(statusMenuItem)
+        cancelMenuItem = NSMenuItem(title: "Cancel Recording", action: #selector(cancelRecordingFromMenu), keyEquivalent: "")
+        cancelMenuItem.isHidden = true
+        statusMenu.addItem(cancelMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(NSMenuItem(title: "Quit PhemeMurmur", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = statusMenu
 
         // Setup hotkey
+        hotkeyManager.onToggle = { [weak self] in
+            self?.handleToggle()
+        }
+
         if !HotkeyManager.checkAccessibility() {
             print("Accessibility permission required. Prompting...")
             HotkeyManager.promptAccessibility()
         }
 
-        hotkeyManager.onToggle = { [weak self] in
-            self?.handleToggle()
+        // Global Esc key monitor for cancelling recording
+        escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            if event.keyCode == 0x35 { // Escape
+                self?.handleCancel()
+            }
         }
 
         if !hotkeyManager.start() {
-            print("Failed to create event tap. Grant Accessibility permission and restart.")
-            statusMenuItem.title = "Error: Need Accessibility permission"
+            print("No Accessibility permission yet. Will relaunch after it is granted.")
+            statusMenuItem.title = "Status: Waiting for permission... (will relaunch)"
+            // Wait for permission, then relaunch
+            DispatchQueue.global().async {
+                while !HotkeyManager.checkAccessibility() {
+                    Thread.sleep(forTimeInterval: 1.0)
+                }
+                DispatchQueue.main.async {
+                    Self.relaunch()
+                }
+            }
+            return
         }
 
-        print("PhemeMurmur ready. Press Right Shift to start/stop recording.")
+        print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
     }
 
     private func handleToggle() {
@@ -68,12 +91,29 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func handleCancel() {
+        guard state == .recording else { return }
+
+        // Stop recording and discard the audio
+        if let fileURL = audioRecorder.stopRecording() {
+            try? FileManager.default.removeItem(at: fileURL)
+        }
+
+        state = .idle
+        updateStatus("Idle")
+        print("⛔ Recording cancelled.")
+    }
+
+    @objc private func cancelRecordingFromMenu() {
+        handleCancel()
+    }
+
     private func startRecording() {
         do {
             try audioRecorder.startRecording()
             state = .recording
             updateStatus("Recording...")
-            print("🎙 Recording... Press Right Shift to stop.")
+            print("🎙 Recording... Press Right Shift to stop, Esc to cancel.")
         } catch {
             print("Failed to start recording: \(error)")
             updateStatus("Error: \(error.localizedDescription)")
@@ -125,6 +165,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateStatus(_ text: String) {
         statusMenuItem?.title = "Status: \(text)"
+        cancelMenuItem?.isHidden = state != .recording
         updateIcon()
     }
 
@@ -169,7 +210,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private static func relaunch() {
+        let executableURL = Bundle.main.executableURL!
+        Process.launchedProcess(launchPath: executableURL.path, arguments: [])
+        NSApplication.shared.terminate(nil)
+    }
+
     @objc private func quitApp() {
+        if let monitor = escMonitor {
+            NSEvent.removeMonitor(monitor)
+        }
         if audioRecorder.isRecording {
             _ = audioRecorder.stopRecording()
         }

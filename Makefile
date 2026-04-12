@@ -4,7 +4,7 @@ APP_BUNDLE = $(APP_NAME).app
 CONTENTS = $(APP_BUNDLE)/Contents
 MACOS = $(CONTENTS)/MacOS
 
-.PHONY: build app run clean icon
+.PHONY: build app run clean icon install
 
 build:
 	swift build -c release
@@ -23,6 +23,9 @@ app: build
 run: app
 	open $(APP_BUNDLE)
 
+install: app
+	rm -rf /Applications/$(APP_BUNDLE)
+	cp -r $(APP_BUNDLE) /Applications/$(APP_BUNDLE)
+
 clean:
-	swift package clean
-	rm -rf $(APP_BUNDLE)
+	rm -rf .build $(APP_BUNDLE)

@@ -1,21 +1,28 @@
 import Foundation
 
+struct ConfigFile: Decodable {
+    let apiKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case apiKey = "openai-api-key"
+    }
+}
+
 enum Config {
     static let sampleRate: Double = 16000
     static let channels: UInt32 = 1
     static let minDuration: Double = 0.5
     static let debounceInterval: Double = 0.4
 
-    static let apiKeyPath: String = {
+    static let configPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        return "\(home)/.config/phememurmur/api_key"
+        return "\(home)/.config/pheme-murmur/config.json"
     }()
 
-    static func loadAPIKey() -> String? {
-        guard let raw = try? String(contentsOfFile: apiKeyPath, encoding: .utf8) else {
+    static func loadConfig() -> ConfigFile? {
+        guard let data = FileManager.default.contents(atPath: configPath) else {
             return nil
         }
-        let key = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-        return key.isEmpty ? nil : key
+        return try? JSONDecoder().decode(ConfigFile.self, from: data)
     }
 }

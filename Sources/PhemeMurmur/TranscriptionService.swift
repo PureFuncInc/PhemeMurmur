@@ -20,7 +20,7 @@ enum TranscriptionError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .noAPIKey: return "API key not found at \(Config.apiKeyPath)"
+        case .noAPIKey: return "API key not found in \(Config.configPath)"
         case .fileReadError: return "Cannot read audio file"
         case .httpError(let code, let msg): return "API error (\(code)): \(msg)"
         case .decodingError: return "Cannot parse API response"
@@ -48,6 +48,16 @@ enum TranscriptionService {
         body.append("--\(boundary)\r\n")
         body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
         body.append("gpt-4o-transcribe\r\n")
+
+        // language field — force Traditional Chinese output
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+        body.append("zh\r\n")
+
+        // prompt field — steer toward Traditional Chinese characters
+        body.append("--\(boundary)\r\n")
+        body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
+        body.append("請使用正體中文（繁體中文）輸出。\r\n")
 
         // file field
         body.append("--\(boundary)\r\n")
