@@ -133,6 +133,22 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
+    private func setIcon(symbolName: String, color: NSColor) {
+        guard let button = statusItem?.button else { return }
+        let sizeConfig = NSImage.SymbolConfiguration(pointSize: 18, weight: .regular, scale: .medium)
+        let colorConfig = NSImage.SymbolConfiguration(paletteColors: [color])
+        let config = sizeConfig.applying(colorConfig)
+        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) {
+            image.isTemplate = false
+            button.image = image
+            button.title = ""
+        } else {
+            button.image = nil
+            button.title = "🗣️"
+        }
+    }
+
     @objc private func quitApp() {
         if audioRecorder.isRecording {
             _ = audioRecorder.stopRecording()
