@@ -3,7 +3,7 @@ import CoreGraphics
 import Foundation
 
 final class HotkeyManager {
-    private var eventTap: CFMachPort?
+    fileprivate var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var lastToggleTime: CFAbsoluteTime = 0
     var onToggle: (() -> Void)?
@@ -81,12 +81,14 @@ private func hotkeyCallback(
         return Unmanaged.passUnretained(event)
     }
 
+    let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
+
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        // Re-enable the tap
+        if let tap = manager.eventTap {
+            CGEvent.tapEnable(tap: tap, enable: true)
+        }
         return Unmanaged.passUnretained(event)
     }
-
-    let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
     manager.handleFlagsChanged(event)
 
     return Unmanaged.passUnretained(event)

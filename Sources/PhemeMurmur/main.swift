@@ -77,11 +77,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             print("Failed to start recording: \(error)")
             updateStatus("Error: \(error.localizedDescription)")
-            setIcon(symbolName: "exclamationmark.triangle", color: .systemOrange)
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                guard let self, self.state == .idle else { return }
-                self.updateIcon()
-            }
+            showErrorIcon()
         }
     }
 
@@ -118,11 +114,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     print("Transcription failed: \(error)")
                     self.state = .idle
                     self.updateStatus("Error: \(error.localizedDescription)")
-                    self.setIcon(symbolName: "exclamationmark.triangle", color: .systemOrange)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-                        guard let self, self.state == .idle else { return }
-                        self.updateIcon()
-                    }
+                    self.showErrorIcon()
                 }
             }
 
@@ -151,6 +143,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             color = .systemBlue
         }
         setIcon(symbolName: symbolName, color: color)
+    }
+
+    private func showErrorIcon() {
+        setIcon(symbolName: "exclamationmark.triangle", color: .systemOrange)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self, self.state == .idle else { return }
+            self.updateIcon()
+        }
     }
 
     private func setIcon(symbolName: String, color: NSColor) {

@@ -96,6 +96,6 @@ make clean  # 清除 build 產物
 
 | 版本 | 內容 | Plan 文件 |
 |---|---|---|
-| v1 | MVP 全功能（錄音、轉譯、貼上、快捷鍵、menu bar） | `plan/v1_mvp.md` |
-| v2 | App icon（🗣️ emoji → icns）+ 簡化 status bar 為靜態 emoji | `plan/v2_icon.md` |
-| v3 | SF Symbols 狀態圖示（idle/recording/transcribing/error） | `docs/superpowers/specs/2026-04-12-status-bar-icon-states-design.md` |
+| v1 | MVP 全功能（錄音、轉譯、貼上、快捷鍵、menu bar） | `docs/v1_mvp.md` |
+| v2 | App icon（🗣️ emoji → icns）+ 簡化 status bar 為靜態 emoji | （已合併至本文件） |
+| v3 | SF Symbols 狀態圖示（idle/recording/transcribing/error） | （已合併至本文件） |
