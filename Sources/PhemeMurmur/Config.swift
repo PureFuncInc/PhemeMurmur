@@ -2,9 +2,11 @@ import Foundation
 
 struct ConfigFile: Decodable {
     let apiKey: String
+    let prefix: String?
 
     enum CodingKeys: String, CodingKey {
         case apiKey = "openai-api-key"
+        case prefix
     }
 }
 

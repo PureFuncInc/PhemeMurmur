@@ -17,7 +17,7 @@ PhemeMurmur/
 │   ├── AudioRecorder.swift          # AVAudioEngine 錄音 → 16kHz mono WAV
 │   ├── TranscriptionService.swift   # OpenAI API multipart POST
 │   ├── PasteService.swift           # NSPasteboard + CGEvent 模擬 Cmd+V
-│   └── Config.swift                 # 常數 + API key 讀取
+│   └── Config.swift                 # 常數 + config.json 讀取（API key、prefix）
 └── scripts/
     └── generate_icon.swift          # 🗣️ emoji → .icns 轉換腳本
 ```
@@ -61,7 +61,7 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
 2. **錄音**：AVAudioEngine → 16kHz mono Float32 buffers（NSLock 保護）
 3. **存檔**：寫 WAV 到 `$TMPDIR/phememurmur_recording.wav`（16-bit PCM；macOS 的 `FileManager.default.temporaryDirectory`，通常為 `/var/folders/.../T/`）
 4. **轉譯**：multipart POST → OpenAI `gpt-4o-transcribe`（`language=zh` + prompt 引導正體中文輸出）
-5. **輸出**：文字寫入 NSPasteboard → CGEvent 模擬 Cmd+V 貼到焦點 app
+5. **輸出**：若 config 有設定 `prefix`，先 prepend 至轉譯文字前；寫入 NSPasteboard → CGEvent 模擬 Cmd+V 貼到焦點 app
 6. **清理**：刪除 temp WAV
 
 ### 錯誤處理
@@ -85,6 +85,7 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
 | 錯誤圖示顯示 | 3 秒 |
 | 轉譯語言 | `zh`（中文） |
 | 轉譯 prompt | `請使用正體中文（繁體中文）輸出。` |
+| 輸出前綴 | `prefix`（可選，prepend 至轉譯文字前） |
 
 ## 權限需求
 

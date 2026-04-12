@@ -10,6 +10,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
     private var apiKey: String?
+    private var prefix: String?
 
     private enum State {
         case idle
@@ -22,6 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Load API key
         if let config = Config.loadConfig() {
             apiKey = config.apiKey
+            prefix = config.prefix
         } else {
             print("Warning: Config not found at \(Config.configPath)")
             print("Create the file with your OpenAI API key:")
@@ -62,18 +64,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         if !hotkeyManager.start() {
-            print("No Accessibility permission yet. Will relaunch after it is granted.")
-            statusMenuItem.title = "Status: Waiting for permission... (will relaunch)"
-            // Wait for permission, then relaunch
-            DispatchQueue.global().async {
-                while !HotkeyManager.checkAccessibility() {
-                    Thread.sleep(forTimeInterval: 1.0)
-                }
-                DispatchQueue.main.async {
-                    Self.relaunch()
-                }
-            }
-            return
+            print("Failed to create event tap. Grant Accessibility permission and restart.")
+            statusMenuItem.title = "Error: Need Accessibility permission"
         }
 
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
@@ -144,8 +136,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let text = try await TranscriptionService.transcribe(fileURL: fileURL, apiKey: apiKey)
                 await MainActor.run {
-                    print(">>> \(text)")
-                    PasteService.pasteText(text)
+                    let output = (self.prefix ?? "") + text
+                    print(">>> \(output)")
+                    PasteService.pasteText(output)
                     self.state = .idle
                     self.updateStatus("Idle")
                 }
@@ -208,12 +201,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.image = nil
             button.title = "🗣️"
         }
-    }
-
-    private static func relaunch() {
-        let executableURL = Bundle.main.executableURL!
-        Process.launchedProcess(launchPath: executableURL.path, arguments: [])
-        NSApplication.shared.terminate(nil)
     }
 
     @objc private func quitApp() {
