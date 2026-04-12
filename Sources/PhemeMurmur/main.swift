@@ -27,7 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
 
         // Setup menu bar
-        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         updateIcon()
 
         statusMenu = NSMenu()
@@ -72,31 +72,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             try audioRecorder.startRecording()
             state = .recording
-            updateStatus("Recording...", icon: "mic.fill")
+            updateStatus("Recording...")
             print("🎙 Recording... Press Right Shift to stop.")
         } catch {
             print("Failed to start recording: \(error)")
-            updateStatus("Error: \(error.localizedDescription)", icon: "mic.slash")
+            updateStatus("Error: \(error.localizedDescription)")
         }
     }
 
     private func stopRecordingAndTranscribe() {
         guard let fileURL = audioRecorder.stopRecording() else {
             state = .idle
-            updateStatus("Idle", icon: "mic.slash")
+            updateStatus("Idle")
             print("No audio captured or too short.")
             return
         }
 
         guard let apiKey = apiKey else {
             state = .idle
-            updateStatus("Error: No API key", icon: "exclamationmark.triangle")
+            updateStatus("Error: No API key")
             print("Cannot transcribe: API key not configured.")
             return
         }
 
         state = .transcribing
-        updateStatus("Transcribing...", icon: "ellipsis.circle")
+        updateStatus("Transcribing...")
         print("⏹ Stopped. Transcribing...")
 
         Task {
@@ -106,13 +106,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     print(">>> \(text)")
                     PasteService.pasteText(text)
                     self.state = .idle
-                    self.updateStatus("Idle", icon: "mic.slash")
+                    self.updateStatus("Idle")
                 }
             } catch {
                 await MainActor.run {
                     print("Transcription failed: \(error)")
                     self.state = .idle
-                    self.updateStatus("Error: \(error.localizedDescription)", icon: "exclamationmark.triangle")
+                    self.updateStatus("Error: \(error.localizedDescription)")
                 }
             }
 
@@ -121,16 +121,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private func updateStatus(_ text: String, icon: String) {
+    private func updateStatus(_ text: String) {
         statusMenuItem?.title = "Status: \(text)"
-        updateIcon(name: icon)
+        updateIcon()
     }
 
-    private func updateIcon(name: String = "mic.slash") {
+    private func updateIcon() {
         if let button = statusItem?.button {
-            let image = NSImage(systemSymbolName: name, accessibilityDescription: "PhemeMurmur")
-            image?.isTemplate = true
-            button.image = image
+            button.image = nil
+            button.title = "🗣️"
         }
     }
 
