@@ -127,10 +127,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func updateIcon() {
-        if let button = statusItem?.button {
-            button.image = nil
-            button.title = "🗣️"
+        let symbolName: String
+        let color: NSColor
+        switch state {
+        case .idle:
+            symbolName = "waveform"
+            color = .secondaryLabelColor
+        case .recording:
+            symbolName = "record.circle"
+            color = .systemRed
+        case .transcribing:
+            symbolName = "text.bubble"
+            color = .systemBlue
         }
+        setIcon(symbolName: symbolName, color: color)
     }
 
     private func setIcon(symbolName: String, color: NSColor) {
