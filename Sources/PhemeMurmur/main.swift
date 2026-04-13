@@ -179,6 +179,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             try audioRecorder.startRecording()
             state = .recording
             updateStatus("Recording...")
+            NSSound(named: "Tink")?.play()
             print("🎙 Recording... Press Right Shift to stop, Esc to cancel.")
         } catch {
             print("Failed to start recording: \(error)")
@@ -194,6 +195,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("No audio captured or too short.")
             return
         }
+
+        NSSound(named: "Pop")?.play()
 
         guard let provider = activeProvider else {
             state = .idle
