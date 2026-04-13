@@ -27,7 +27,9 @@ enum TranscriptionError: Error, LocalizedError {
 }
 
 enum TranscriptionService {
-    static func transcribe(fileURL: URL, apiKey: String) async throws -> String {
+    static let defaultModel = "gpt-4o-mini-transcribe-2025-12-15"
+
+    static func transcribe(fileURL: URL, apiKey: String, model: String = defaultModel) async throws -> String {
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
 
@@ -45,7 +47,7 @@ enum TranscriptionService {
         // model field
         body.append("--\(boundary)\r\n")
         body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-        body.append("gpt-4o-mini-transcribe-2025-12-15\r\n")
+        body.append("\(model)\r\n")
 
         // language field — force Traditional Chinese output
         body.append("--\(boundary)\r\n")

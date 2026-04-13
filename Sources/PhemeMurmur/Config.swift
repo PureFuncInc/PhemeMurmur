@@ -3,10 +3,12 @@ import Foundation
 struct ConfigFile: Decodable {
     let apiKey: String
     let prefix: String?
+    let transcriptionModel: String?
 
     enum CodingKeys: String, CodingKey {
         case apiKey = "openai-api-key"
         case prefix
+        case transcriptionModel = "transcription-model"
     }
 }
 
@@ -27,7 +29,11 @@ enum Config {
     "openai-api-key": "sk-your-key-here",
 
     // Optional: text to prepend before every transcription result
-    // "prefix": ""
+    // "prefix": "",
+
+    // Transcription model. Default is Mini (cheaper & faster).
+    // For higher accuracy, switch to "gpt-4o-transcribe".
+    "transcription-model": "gpt-4o-mini-transcribe-2025-12-15"
 }
 """
 

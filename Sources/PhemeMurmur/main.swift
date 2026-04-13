@@ -12,6 +12,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let onboarding = OnboardingWindow()
     private var apiKey: String?
     private var prefix: String?
+    private var transcriptionModel: String = TranscriptionService.defaultModel
 
     private enum State {
         case idle
@@ -50,6 +51,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let config = Config.loadConfig() {
             apiKey = config.apiKey
             prefix = config.prefix
+            transcriptionModel = config.transcriptionModel ?? TranscriptionService.defaultModel
         } else {
             print("Error: Failed to parse \(Config.configPath)")
             updateStatus("Error: Invalid config syntax")
@@ -145,7 +147,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             do {
-                let text = try await TranscriptionService.transcribe(fileURL: fileURL, apiKey: apiKey)
+                let text = try await TranscriptionService.transcribe(fileURL: fileURL, apiKey: apiKey, model: transcriptionModel)
                 await MainActor.run {
                     let output = (self.prefix ?? "") + text
                     print(">>> \(output)")
