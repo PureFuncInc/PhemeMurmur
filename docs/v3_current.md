@@ -1,10 +1,10 @@
-# PhemeMurmur — 現狀總覽
+# PhemeMurmur
 
-macOS menu bar app，按右 Shift 錄音，透過 OpenAI gpt-4o-transcribe 轉文字後自動貼到當前輸入焦點。
+macOS menu bar app，按右 Shift 錄音，透過 OpenAI gpt-4o-transcribe 轉文字後自動貼到當前輸入焦點與剪貼簿。
 
 ## 專案結構
 
-```
+```txt
 PhemeMurmur/
 ├── Package.swift                    # SPM executable，macOS 13+，零外部依賴
 ├── Makefile                         # build / app / run / clean / icon
@@ -38,20 +38,18 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
 
 ### Menu Bar 圖示
 
-使用 SF Symbols + `paletteColors` 著色（`contentTintColor` 在 macOS 11+ 壞了）：
+使用 SF Symbols + `paletteColors` 著色
 
-| 狀態 | SF Symbol | 顏色 |
-|---|---|---|
-| Idle | `waveform` | 灰（`.secondaryLabelColor`） |
-| Recording | `record.circle` | 紅（`.systemRed`） |
-| Transcribing | `text.bubble` | 藍（`.systemBlue`） |
-| Error（暫態） | `exclamationmark.triangle` | 橘（`.systemOrange`），3 秒自動恢復 |
-
-`isTemplate = false`，不隨 menu bar 明暗自動變色（設計取捨：狀態色比自適應重要）。
+| State        | SF Symbol                  | Color                                        |
+| ------------ | -------------------------- | -------------------------------------------- |
+| Idle         | `waveform`                 | Gray (`.secondaryLabelColor`)                |
+| Recording    | `record.circle`            | Red (`.systemRed`)                           |
+| Transcribing | `text.bubble`              | Blue (`.systemBlue`)                         |
+| Error        | `exclamationmark.triangle` | Orange (`.systemOrange`), auto-reverts in 3s |
 
 ### Menu 項目
 
-- **Status: {狀態文字}**（disabled，純顯示）
+- **Status: {text}**
 - **Cancel Recording**（錄音中才顯示，點擊取消錄音）
 - **Quit PhemeMurmur**（快捷鍵 Q）
 
@@ -73,26 +71,24 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
   - 錄音後發現無 key：state 回 idle，menu 文字顯示 "Error: No API key"（無 error icon）
 - **Accessibility 權限缺失**：啟動時彈窗提示開啟；若 event tap 建立失敗，menu 顯示 "Waiting for permission... (will relaunch)"，背景 polling 等權限授予後自動 relaunch
 
-## 設定
+## 內建設定
 
-| 項目 | 值 |
-|---|---|
-| 設定檔路徑 | `~/.config/pheme-murmur/config.json` |
-| 取樣率 | 16kHz |
-| 聲道 | Mono |
-| 最短錄音 | 0.5 秒 |
-| 快捷鍵防抖 | 400ms |
-| 錯誤圖示顯示 | 3 秒 |
-| 轉譯語言 | `zh`（中文） |
-| 轉譯 prompt | `請使用正體中文（繁體中文）輸出。` |
-| 輸出前綴 | `prefix`（可選，prepend 至轉譯文字前） |
+- 設定檔路徑：`~/.config/pheme-murmur/config.json`
+- 取樣率：16kHz
+- 聲道：Mono
+- 最短錄音：0.5s
+- 快捷鍵防抖：400ms
+- 錯誤圖示顯示：3s
+- 轉譯語言：`zh`
+- 轉譯提示詞：`請使用正體中文（繁體中文）
+- 輸出前綴：`prefix`（可選，prepend 至轉譯文字前）
 
 ## 權限需求
 
-| 權限 | 框架 | 用途 |
-|---|---|---|
-| Microphone | AVAudioEngine | 錄音（Info.plist + 系統彈窗） |
-| Accessibility | CGEvent tap | 全域快捷鍵 + 模擬按鍵（手動開啟） |
+| Permission    | Framework     | Purpose                                            |
+| ------------- | ------------- | -------------------------------------------------- |
+| Microphone    | AVAudioEngine | Recording (Info.plist + system dialog)             |
+| Accessibility | CGEvent tap   | Global hotkey + simulated keypress (manual enable) |
 
 ## 建構與執行
 
@@ -104,12 +100,3 @@ make install  # build + 複製 .app 到 /Applications/
 make icon     # 重新生成 AppIcon.icns
 make clean    # 清除 build 產物
 ```
-
-## 版本歷程
-
-| 版本 | 內容 | Plan 文件 |
-|---|---|---|
-| v1 | MVP 全功能（錄音、轉譯、貼上、快捷鍵、menu bar） | `docs/v1_mvp.md` |
-| v2 | App icon（🗣️ emoji → icns）+ 簡化 status bar 為靜態 emoji | （已合併至本文件） |
-| v3 | SF Symbols 狀態圖示（idle/recording/transcribing/error） | （已合併至本文件） |
-| v3.1 | Esc 取消錄音、Cancel menu item、權限 relaunch、`make install` | （已合併至本文件） |
