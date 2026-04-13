@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
     private var cancelMenuItem: NSMenuItem!
+    private var promptMenuItem: NSMenuItem!
     private var promptSubmenu: NSMenu!
     private var escMonitor: Any?
 
@@ -46,9 +47,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(cancelMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
         promptSubmenu = NSMenu()
-        let promptItem = NSMenuItem(title: "Prompt", action: nil, keyEquivalent: "")
-        statusMenu.addItem(promptItem)
-        statusMenu.setSubmenu(promptSubmenu, for: promptItem)
+        promptMenuItem = NSMenuItem(title: "Prompt", action: nil, keyEquivalent: "")
+        statusMenu.addItem(promptMenuItem)
+        statusMenu.setSubmenu(promptSubmenu, for: promptMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
         statusMenu.addItem(NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "r"))
@@ -194,6 +195,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = (name == activeTemplateName) ? .on : .off
             promptSubmenu.addItem(item)
         }
+        promptMenuItem?.title = "Prompt: \(activeTemplateName)"
     }
 
     @objc private func selectPromptTemplate(_ sender: NSMenuItem) {
