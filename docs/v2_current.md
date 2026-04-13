@@ -52,7 +52,7 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
 - **Status: {text}**
 - **Cancel Recording**（錄音中才顯示，點擊取消錄音）
 - **Open Config Folder**（用 Finder 開啟 `~/.config/pheme-murmur/`）
-- **Quit PhemeMurmur**（快捷鍵 Q）
+- **Restart**（快捷鍵 R，重新啟動應用程式）
 
 ### 資料流
 
