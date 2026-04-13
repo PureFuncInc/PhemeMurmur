@@ -23,16 +23,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Config.createDefaultConfigIfNeeded()
 
         // Load API key
-        if let config = Config.loadConfig() {
-            apiKey = config.apiKey
-            prefix = config.prefix
-        } else {
-            print("Warning: Config not found at \(Config.configPath)")
-            print("Create the file with your OpenAI API key:")
-            print("  mkdir -p ~/.config/pheme-murmur")
-            print("  echo '{\"openai-api-key\": \"sk-...\"}' > ~/.config/pheme-murmur/config.json")
-        }
-
         // Setup menu bar
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         updateIcon()
@@ -46,8 +36,19 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(cancelMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
+        statusMenu.addItem(NSMenuItem(title: "Restart PhemeMurmur", action: #selector(restartApp), keyEquivalent: "r"))
         statusMenu.addItem(NSMenuItem(title: "Quit PhemeMurmur", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = statusMenu
+
+        // Load config
+        if let config = Config.loadConfig() {
+            apiKey = config.apiKey
+            prefix = config.prefix
+        } else {
+            print("Error: Failed to parse \(Config.configPath)")
+            updateStatus("Error: Invalid config syntax")
+            showErrorIcon(persistent: true)
+        }
 
         // Setup hotkey
         hotkeyManager.onToggle = { [weak self] in
@@ -68,7 +69,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         if !hotkeyManager.start() {
             print("Failed to create event tap. Grant Accessibility permission and restart.")
-            statusMenuItem.title = "Error: Need Accessibility permission"
+            updateStatus("Error: Need Accessibility permission")
+            showErrorIcon(persistent: true)
         }
 
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
@@ -126,6 +128,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let apiKey = apiKey else {
             state = .idle
             updateStatus("Error: No API key")
+            showErrorIcon(persistent: true)
             print("Cannot transcribe: API key not configured.")
             return
         }
@@ -181,11 +184,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setIcon(symbolName: symbolName, color: color)
     }
 
-    private func showErrorIcon() {
+    private func showErrorIcon(persistent: Bool = false) {
         setIcon(symbolName: "exclamationmark.triangle", color: .systemOrange)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
-            guard let self, self.state == .idle else { return }
-            self.updateIcon()
+        if !persistent {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+                guard let self, self.state == .idle else { return }
+                self.updateIcon()
+            }
         }
     }
 
@@ -208,6 +213,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openConfigFolder() {
         let url = URL(fileURLWithPath: (Config.configPath as NSString).deletingLastPathComponent)
         NSWorkspace.shared.open(url)
+    }
+
+    @objc private func restartApp() {
+        let bundlePath = Bundle.main.bundlePath
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 2 && open \"\(bundlePath)\""]
+        try? process.run()
+        quitApp()
     }
 
     @objc private func quitApp() {
