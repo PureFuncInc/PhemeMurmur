@@ -1,6 +1,7 @@
 import ApplicationServices
 import CoreGraphics
 import Foundation
+import os
 
 enum HotkeyKey: String, CaseIterable {
     case rightShift   = "right-shift"
@@ -31,21 +32,33 @@ enum HotkeyKey: String, CaseIterable {
         }
     }
 
+    /// Returns true if the flags indicate this key is currently pressed (key-down).
+    /// Must be used together with a keyCode check — flags alone do not identify the specific key.
     func isKeyDown(flags: CGEventFlags) -> Bool {
         flags.contains(requiredFlag)
     }
 }
 
 final class HotkeyManager {
-    fileprivate var eventTap: CFMachPort?
+    private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var lastToggleTime: CFAbsoluteTime = 0
 
-    var key: HotkeyKey = .rightShift
+    private let _key = OSAllocatedUnfairLock<HotkeyKey>(initialState: .rightShift)
+    var key: HotkeyKey {
+        get { _key.withLock { $0 } }
+        set { _key.withLock { $0 = newValue } }
+    }
+
     var onToggle: (() -> Void)?
 
     // Recording mode — captures the next supported modifier key press
-    fileprivate var isRecordingKey = false
+    private let _isRecordingKey = OSAllocatedUnfairLock<Bool>(initialState: false)
+    fileprivate var isRecordingKey: Bool {
+        get { _isRecordingKey.withLock { $0 } }
+        set { _isRecordingKey.withLock { $0 = newValue } }
+    }
+
     var onKeyRecorded: ((HotkeyKey) -> Void)?
 
     func startRecordingKey() {
@@ -116,6 +129,11 @@ final class HotkeyManager {
         }
     }
 
+    fileprivate func reenableIfNeeded() {
+        guard let tap = eventTap else { return }
+        CGEvent.tapEnable(tap: tap, enable: true)
+    }
+
     static func checkAccessibility() -> Bool {
         AXIsProcessTrusted()
     }
@@ -139,9 +157,7 @@ private func hotkeyCallback(
     let manager = Unmanaged<HotkeyManager>.fromOpaque(userInfo).takeUnretainedValue()
 
     if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-        if let tap = manager.eventTap {
-            CGEvent.tapEnable(tap: tap, enable: true)
-        }
+        manager.reenableIfNeeded()
         return Unmanaged.passUnretained(event)
     }
     manager.handleFlagsChanged(event)
