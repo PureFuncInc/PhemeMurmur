@@ -34,28 +34,29 @@ subjectKeyIdentifier = hash
 EOF
 
 # Generate 2048-bit RSA private key
-openssl genrsa -out "$TMPDIR/key.pem" 2048 2>/dev/null
+if ! openssl genrsa -out "$TMPDIR/key.pem" 2048 2>/dev/null; then
+    echo "✗ Failed to generate private key" >&2; exit 1
+fi
 
 # Self-signed certificate, valid 10 years
-openssl req -new -x509 \
+if ! openssl req -new -x509 \
     -key "$TMPDIR/key.pem" \
     -out "$TMPDIR/cert.pem" \
     -days 3650 \
-    -config "$TMPDIR/cert.conf" 2>/dev/null
+    -config "$TMPDIR/cert.conf" 2>/dev/null; then
+    echo "✗ Failed to create certificate" >&2; exit 1
+fi
 
-# Bundle as PKCS12 with empty password
-openssl pkcs12 -export \
-    -inkey "$TMPDIR/key.pem" \
-    -in "$TMPDIR/cert.pem" \
-    -out "$TMPDIR/cert.p12" \
-    -passout pass: 2>/dev/null
+# Import key and cert as separate PEM files — avoids PKCS12 encryption
+# compatibility issues between LibreSSL and macOS Keychain.
+# macOS Keychain auto-links them via matching public key.
+# -A: allow codesign to access without per-use prompts.
+if ! security import "$TMPDIR/key.pem" -k "$KEYCHAIN" -A 2>/dev/null; then
+    echo "✗ Failed to import private key" >&2; exit 1
+fi
 
-# Import into login keychain.
-# -A: allow codesign to access the key without per-use prompts.
-# macOS may show one keychain dialog on the very first import — expected behaviour.
-security import "$TMPDIR/cert.p12" \
-    -k "$KEYCHAIN" \
-    -P "" \
-    -A
+if ! security import "$TMPDIR/cert.pem" -k "$KEYCHAIN" -A 2>/dev/null; then
+    echo "✗ Failed to import certificate" >&2; exit 1
+fi
 
 echo "→ Certificate '$CERT_NAME' is ready. Future builds will be silent."

@@ -22,6 +22,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var prefix: String?
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
+    private var accessibilityPollTimer: Timer?
 
     private var activeProvider: TranscriptionProvider? {
         providers[activeProviderName]
@@ -113,11 +114,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             self?.handleToggle()
         }
 
-        if !HotkeyManager.checkAccessibility() {
-            print("Accessibility permission required. Prompting...")
-            HotkeyManager.promptAccessibility()
-        }
-
         // Global Esc key monitor for cancelling recording
         escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             if event.keyCode == 0x35 { // Escape
@@ -125,10 +121,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
 
-        if !hotkeyManager.start() {
-            print("Failed to create event tap. Grant Accessibility permission and restart.")
-            updateStatus("Error: Need Accessibility permission")
-            showErrorIcon(persistent: true)
+        if HotkeyManager.checkAccessibility() {
+            startHotkeyMonitor()
+        } else {
+            print("Accessibility permission required. Prompting...")
+            HotkeyManager.promptAccessibility()
+            if !providers.isEmpty {
+                updateStatus("Waiting: Accessibility permission...")
+            }
+            pollForAccessibility()
         }
 
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
@@ -160,6 +161,31 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func cancelRecordingFromMenu() {
         handleCancel()
+    }
+
+    private func startHotkeyMonitor() {
+        if hotkeyManager.start() {
+            print("Hotkey monitor active.")
+        } else {
+            print("Failed to create event tap. Grant Accessibility permission and restart.")
+            updateStatus("Error: Need Accessibility permission")
+            showErrorIcon(persistent: true)
+        }
+    }
+
+    private func pollForAccessibility() {
+        accessibilityPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            guard HotkeyManager.checkAccessibility() else { return }
+            timer.invalidate()
+            self.accessibilityPollTimer = nil
+            self.startHotkeyMonitor()
+            // Only restore Idle status if there is no pre-existing provider error
+            if !self.providers.isEmpty {
+                self.updateStatus("Idle")
+            }
+            print("Accessibility granted. Hotkey monitor started automatically.")
+        }
     }
 
     private func startRecording() {
@@ -346,6 +372,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func quitApp() {
+        accessibilityPollTimer?.invalidate()
         if let monitor = escMonitor {
             NSEvent.removeMonitor(monitor)
         }
