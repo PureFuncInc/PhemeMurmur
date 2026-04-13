@@ -5,17 +5,36 @@ struct PromptTemplate: Decodable {
     let prompt: String?
 }
 
+enum ProviderType: String, Decodable {
+    case openai
+    case gemini
+}
+
 struct ConfigFile: Decodable {
-    let apiKey: String
+    let openaiApiKey: String?
+    let geminiApiKey: String?
+    let provider: ProviderType?
     let prefix: String?
     let transcriptionModel: String?
     let promptTemplates: [String: PromptTemplate]?
 
     enum CodingKeys: String, CodingKey {
-        case apiKey = "openai-api-key"
+        case openaiApiKey = "openai-api-key"
+        case geminiApiKey = "gemini-api-key"
+        case provider
         case prefix
         case transcriptionModel = "transcription-model"
         case promptTemplates = "prompt-templates"
+    }
+
+    /// Resolves the active provider type: explicit `provider` field, or whichever key is present.
+    var resolvedProvider: ProviderType? {
+        if let provider { return provider }
+        if openaiApiKey != nil && geminiApiKey == nil { return .openai }
+        if geminiApiKey != nil && openaiApiKey == nil { return .gemini }
+        // Both keys present but no explicit provider — default to openai
+        if openaiApiKey != nil { return .openai }
+        return nil
     }
 }
 
@@ -34,19 +53,26 @@ enum Config {
 
     static let defaultConfigContent = """
 {
-    // Your OpenAI API key — get one at https://platform.openai.com/api-keys
+    // Provider: "openai" or "gemini". Auto-detected if only one key is set.
+    // "provider": "openai",
+
+    // OpenAI API key — get one at https://platform.openai.com/api-keys
     "openai-api-key": "sk-your-key-here",
+
+    // Gemini API key — get one at https://aistudio.google.com/apikey
+    // "gemini-api-key": "your-gemini-key-here",
 
     // Optional: text to prepend before every transcription result
     // "prefix": "",
 
-    // Transcription model. Default is Mini (cheaper & faster).
-    // For higher accuracy, switch to "gpt-4o-transcribe".
-    "transcription-model": "gpt-4o-mini-transcribe-2025-12-15",
+    // Transcription model (provider-specific).
+    //   OpenAI default: "gpt-4o-mini-transcribe-2025-12-15"
+    //   Gemini default: "gemini-3.1-flash-lite-preview"
+    // "transcription-model": "gpt-4o-mini-transcribe-2025-12-15",
 
     // Prompt templates — switchable from the menu bar.
     //   "language": input audio language (ISO-639-1), helps transcription accuracy
-    //   "prompt": if set, sends transcribed text through Chat API for post-processing
+    //   "prompt": if set, sends transcribed text through LLM for post-processing
     "prompt-templates": {
         "zh_TW": { "language": "zh" },
         "zh_TW-en_US": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }

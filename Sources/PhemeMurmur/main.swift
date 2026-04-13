@@ -12,9 +12,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
     private let onboarding = OnboardingWindow()
-    private var apiKey: String?
+    private var provider: TranscriptionProvider?
     private var prefix: String?
-    private var transcriptionModel: String = TranscriptionService.defaultModel
+    private var transcriptionModel: String?
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
 
@@ -58,9 +58,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Load config
         if let config = Config.loadConfig() {
-            apiKey = config.apiKey
+            switch config.resolvedProvider {
+            case .openai:
+                if let key = config.openaiApiKey {
+                    provider = OpenAIProvider(apiKey: key)
+                    print("Provider: OpenAI")
+                }
+            case .gemini:
+                if let key = config.geminiApiKey {
+                    provider = GeminiProvider(apiKey: key)
+                    print("Provider: Gemini")
+                }
+            case nil:
+                print("Error: No API key configured in \(Config.configPath)")
+                updateStatus("Error: No API key")
+                showErrorIcon(persistent: true)
+            }
             prefix = config.prefix
-            transcriptionModel = config.transcriptionModel ?? TranscriptionService.defaultModel
+            transcriptionModel = config.transcriptionModel
             promptTemplates = config.promptTemplates ?? [:]
         } else {
             print("Error: Failed to parse \(Config.configPath)")
@@ -144,7 +159,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard let apiKey = apiKey else {
+        guard let provider = provider else {
             state = .idle
             updateStatus("Error: No API key")
             showErrorIcon(persistent: true)
@@ -160,10 +175,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
-                var text = try await TranscriptionService.transcribe(fileURL: fileURL, apiKey: apiKey, model: transcriptionModel, language: template?.language)
+                var text = try await provider.transcribe(fileURL: fileURL, model: self.transcriptionModel, language: template?.language)
                 if let prompt = template?.prompt {
                     print("Post-processing with: \(prompt)")
-                    text = try await TranscriptionService.postProcess(text: text, instruction: prompt, apiKey: apiKey)
+                    text = try await provider.postProcess(text: text, instruction: prompt)
                 }
                 let finalText = text
                 await MainActor.run {
