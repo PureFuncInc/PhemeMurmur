@@ -31,7 +31,6 @@ struct ConfigFile: Decodable {
     let activeProvider: String?
 
     let prefix: String?
-    let transcriptionModel: String?
     let promptTemplates: [String: PromptTemplate]?
 
     enum CodingKeys: String, CodingKey {
@@ -41,7 +40,6 @@ struct ConfigFile: Decodable {
         case providers
         case activeProvider = "active-provider"
         case prefix
-        case transcriptionModel = "transcription-model"
         case promptTemplates = "prompt-templates"
     }
 
@@ -101,11 +99,6 @@ enum Config {
 
     // Optional: text to prepend before every transcription result
     // "prefix": "",
-
-    // Transcription model (provider-specific, overrides provider default).
-    //   OpenAI default: "gpt-4o-mini-transcribe-2025-12-15"
-    //   Gemini default: "gemini-3.1-flash-lite-preview"
-    // "transcription-model": "gpt-4o-mini-transcribe-2025-12-15",
 
     // Prompt templates — switchable from the menu bar.
     //   "language": input audio language (ISO-639-1), helps transcription accuracy

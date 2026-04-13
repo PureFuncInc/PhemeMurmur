@@ -17,7 +17,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var providers: [String: TranscriptionProvider] = [:]
     private var activeProviderName: String = ""
     private var prefix: String?
-    private var transcriptionModel: String?
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
 
@@ -90,7 +89,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Active provider: \(activeProviderName)")
             }
             prefix = config.prefix
-            transcriptionModel = config.transcriptionModel
             promptTemplates = config.promptTemplates ?? [:]
         } else {
             print("Error: Failed to parse \(Config.configPath)")
@@ -191,7 +189,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
-                var text = try await provider.transcribe(fileURL: fileURL, model: self.transcriptionModel, language: template?.language)
+                var text = try await provider.transcribe(fileURL: fileURL, language: template?.language)
                 if let prompt = template?.prompt {
                     print("Post-processing with: \(prompt)")
                     text = try await provider.postProcess(text: text, instruction: prompt)

@@ -5,8 +5,8 @@ struct OpenAIProvider: TranscriptionProvider {
 
     let apiKey: String
 
-    func transcribe(fileURL: URL, model: String?, language: String?) async throws -> String {
-        let model = model ?? Self.defaultModel
+    func transcribe(fileURL: URL, language: String?) async throws -> String {
+        let model = Self.defaultModel
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
 
