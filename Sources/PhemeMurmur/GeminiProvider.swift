@@ -17,12 +17,12 @@ struct GeminiProvider: TranscriptionProvider {
 
         let languageLabel: String
         switch language {
-        case "zh": languageLabel = "Traditional Chinese (繁體中文)"
-        case let lang?: languageLabel = lang
-        default: languageLabel = "Traditional Chinese (繁體中文)"
+            case "zh": languageLabel = "Traditional Chinese (繁體中文)"
+            case let lang?: languageLabel = lang
+            default: languageLabel = "Traditional Chinese (繁體中文)"
         }
 
-        let prompt = "Transcribe this audio in \(languageLabel). The speaker frequently mixes Chinese and English. Use full-context understanding to accurately recognize code-switching between languages. Output ONLY the exact transcription text, nothing else."
+        let prompt = "Transcribe this audio in \(languageLabel). The speaker primarily speaks Chinese, with English nouns, verbs, and technical terms mixed in. Preserve English words as-is without translating them into Chinese. Output ONLY the exact transcription text, nothing else."
 
         let body: [String: Any] = [
             "contents": [[
