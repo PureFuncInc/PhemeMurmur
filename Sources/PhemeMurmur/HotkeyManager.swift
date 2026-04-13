@@ -2,15 +2,62 @@ import ApplicationServices
 import CoreGraphics
 import Foundation
 
+enum HotkeyKey: String, CaseIterable {
+    case rightShift   = "right-shift"
+    case rightOption  = "right-option"
+    case rightControl = "right-control"
+
+    var keyCode: Int64 {
+        switch self {
+        case .rightShift:   return 0x3C
+        case .rightOption:  return 0x3D
+        case .rightControl: return 0x3E
+        }
+    }
+
+    var displayName: String {
+        switch self {
+        case .rightShift:   return "Right Shift"
+        case .rightOption:  return "Right Option"
+        case .rightControl: return "Right Control"
+        }
+    }
+
+    private var requiredFlag: CGEventFlags {
+        switch self {
+        case .rightShift:   return .maskShift
+        case .rightOption:  return .maskAlternate
+        case .rightControl: return .maskControl
+        }
+    }
+
+    func isKeyDown(flags: CGEventFlags) -> Bool {
+        flags.contains(requiredFlag)
+    }
+}
+
 final class HotkeyManager {
     fileprivate var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var lastToggleTime: CFAbsoluteTime = 0
+
+    var key: HotkeyKey = .rightShift
     var onToggle: (() -> Void)?
+
+    // Recording mode — captures the next supported modifier key press
+    fileprivate var isRecordingKey = false
+    var onKeyRecorded: ((HotkeyKey) -> Void)?
+
+    func startRecordingKey() {
+        isRecordingKey = true
+    }
+
+    func stopRecordingKey() {
+        isRecordingKey = false
+    }
 
     func start() -> Bool {
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
-
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
         guard let tap = CGEvent.tapCreate(
@@ -44,14 +91,22 @@ final class HotkeyManager {
 
     fileprivate func handleFlagsChanged(_ event: CGEvent) {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-        // 0x3C = Right Shift
-        guard keyCode == 0x3C else { return }
-
-        // Only fire on key-down (shift flag is set)
         let flags = event.flags
-        guard flags.contains(.maskShift) else { return }
 
-        // Debounce
+        if isRecordingKey {
+            // Capture any supported modifier key on key-down
+            guard let detected = HotkeyKey.allCases.first(where: { $0.keyCode == keyCode }),
+                  detected.isKeyDown(flags: flags) else { return }
+            isRecordingKey = false
+            DispatchQueue.main.async { [weak self] in
+                self?.onKeyRecorded?(detected)
+            }
+            return
+        }
+
+        // Normal mode: trigger only the configured key
+        guard keyCode == key.keyCode, key.isKeyDown(flags: flags) else { return }
+
         let now = CFAbsoluteTimeGetCurrent()
         guard now - lastToggleTime >= Config.debounceInterval else { return }
         lastToggleTime = now
@@ -62,7 +117,7 @@ final class HotkeyManager {
     }
 
     static func checkAccessibility() -> Bool {
-        return AXIsProcessTrusted()
+        AXIsProcessTrusted()
     }
 
     static func promptAccessibility() {
