@@ -23,36 +23,31 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
     private var onDismiss: (() -> Void)?
 
     private struct Page {
-        let symbolName: String
-        let symbolColor: NSColor
+        let emoji: String
         let title: String
         let body: String
     }
 
     private let pages: [Page] = [
         Page(
-            symbolName: "waveform.circle.fill",
-            symbolColor: .systemBlue,
+            emoji: "🎙️",
             title: "歡迎使用 PhemeMurmur",
-            body: "PhemeMurmur 是一款 macOS 選單列語音轉文字工具。\n按下快捷鍵即可錄音，自動將語音轉為繁體中文文字，\n並直接貼上到您正在使用的應用程式中。"
+            body: "PhemeMurmur 是一款 macOS 語音轉文字的選單列應用程式。\n按下快捷鍵即可錄音，自動將語音轉為繁體中文文字，\n然後傳送到您正在使用的應用程式輸入框。"
         ),
         Page(
-            symbolName: "keyboard.fill",
-            symbolColor: .systemGreen,
+            emoji: "⌨️",
             title: "使用方式",
-            body: "按下右側 Shift 鍵開始錄音，\n再次按下右側 Shift 鍵停止錄音並開始轉錄。\n按 Esc 鍵可以取消錄音。\n\n轉錄完成後，文字會自動貼到游標所在位置。\n也會複製到剪貼簿。"
+            body: "按下右側 Shift 鍵開始錄音，\n再次按下右側 Shift 鍵停止錄音並開始轉錄。\n按 Esc 鍵可以取消錄音。\n\n轉錄完成後，文字會自動貼到游標所在位置並複製到剪貼簿。"
         ),
         Page(
-            symbolName: "key.fill",
-            symbolColor: .systemOrange,
+            emoji: "🔑",
             title: "設定 API Key",
-            body: "PhemeMurmur 使用 OpenAI API 進行語音轉文字。\n\n首次使用前，請點擊選單列中的「Open Config Folder」，\n在 config.jsonc 檔案中填入您的 OpenAI API Key。\n\n取得 API Key：platform.openai.com/api-keys"
+            body: "PhemeMurmur 使用 OpenAI API 進行語音轉文字。\n\n首次使用前，請點擊選單列中的「Open Config Folder」，\n在 config.jsonc 檔案中填入您的 OpenAI API Key。"
         ),
         Page(
-            symbolName: "hand.raised.circle.fill",
-            symbolColor: .systemPurple,
+            emoji: "🛡️",
             title: "輔助使用權限",
-            body: "PhemeMurmur 需要「輔助使用」權限來偵測快捷鍵\n以及模擬貼上操作。\n\n啟動後系統會提示您授權，\n請前往「系統設定 → 隱私權與安全性 → 輔助使用」\n允許 PhemeMurmur。\n\n⚠️ 授權完成後，請點選選單列中的「Restart」重新啟動，\n以確保權限生效。"
+            body: "PhemeMurmur 需要「輔助使用」權限來偵測快捷鍵\n以及模擬貼上操作。\n\n啟動後系統會提示您授權，\n請前往「系統設定 → 隱私權與安全性 → 輔助使用」\n允許 PhemeMurmur。\n\n⚠️⚠️⚠️ 授權完成後，請點選選單列中的「Restart」重新啟動，\n以確保權限生效。"
         ),
     ]
 
@@ -125,24 +120,18 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         let containerWidth = pageContainer.bounds.width
         let containerHeight = pageContainer.bounds.height
 
-        // SF Symbol icon
-        let iconSize: CGFloat = 72
-        let sizeConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .light, scale: .large)
-        let colorConfig = NSImage.SymbolConfiguration(paletteColors: [page.symbolColor])
-        let config = sizeConfig.applying(colorConfig)
-
-        let iconView = NSImageView(frame: NSRect(
-            x: (containerWidth - iconSize * 1.2) / 2,
-            y: containerHeight - iconSize * 1.2 - 30,
-            width: iconSize * 1.2,
-            height: iconSize * 1.2
-        ))
-        if let image = NSImage(systemSymbolName: page.symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) {
-            iconView.image = image
-            iconView.imageScaling = .scaleProportionallyUpOrDown
-        }
-        pageContainer.addSubview(iconView)
+        // Emoji icon
+        let emojiSize: CGFloat = 64
+        let emojiLabel = NSTextField(labelWithString: page.emoji)
+        emojiLabel.font = .systemFont(ofSize: emojiSize)
+        emojiLabel.alignment = .center
+        emojiLabel.frame = NSRect(
+            x: (containerWidth - emojiSize * 1.5) / 2,
+            y: containerHeight - emojiSize * 1.5 - 20,
+            width: emojiSize * 1.5,
+            height: emojiSize * 1.5
+        )
+        pageContainer.addSubview(emojiLabel)
 
         // Title
         let titleLabel = NSTextField(labelWithString: page.title)
@@ -150,7 +139,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         titleLabel.alignment = .center
         titleLabel.frame = NSRect(
             x: 30,
-            y: containerHeight - iconSize * 1.2 - 70,
+            y: containerHeight - emojiSize * 1.5 - 60,
             width: containerWidth - 60,
             height: 30
         )
@@ -167,7 +156,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
             x: 40,
             y: 10,
             width: containerWidth - 80,
-            height: containerHeight - iconSize * 1.2 - 85
+            height: containerHeight - emojiSize * 1.5 - 75
         )
         pageContainer.addSubview(bodyLabel)
 
