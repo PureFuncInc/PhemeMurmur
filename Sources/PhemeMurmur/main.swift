@@ -37,7 +37,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
         statusMenu.addItem(NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "r"))
-        statusMenu.addItem(NSMenuItem(title: "Quit PhemeMurmur", action: #selector(quitApp), keyEquivalent: "q"))
+        statusMenu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = statusMenu
 
         // Load config
