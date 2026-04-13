@@ -15,12 +15,14 @@ struct GeminiProvider: TranscriptionProvider {
 
         let base64Audio = fileData.base64EncodedString()
 
-        let prompt: String
-        if let language {
-            prompt = "Transcribe this audio in \(language). The speaker frequently mixes Chinese and English. Use full-context understanding to accurately recognize code-switching between languages. Output ONLY the exact transcription text, nothing else."
-        } else {
-            prompt = "Transcribe this audio in Traditional Chinese (繁體中文). The speaker frequently mixes Chinese and English. Use full-context understanding to accurately recognize code-switching between languages. Output ONLY the exact transcription text, nothing else."
+        let languageLabel: String
+        switch language {
+        case "zh": languageLabel = "Traditional Chinese (繁體中文)"
+        case let lang?: languageLabel = lang
+        default: languageLabel = "Traditional Chinese (繁體中文)"
         }
+
+        let prompt = "Transcribe this audio in \(languageLabel). The speaker frequently mixes Chinese and English. Use full-context understanding to accurately recognize code-switching between languages. Output ONLY the exact transcription text, nothing else."
 
         let body: [String: Any] = [
             "contents": [[
