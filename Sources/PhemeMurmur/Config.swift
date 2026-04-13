@@ -84,18 +84,11 @@ enum Config {
 
     static let defaultConfigContent = """
 {
-    // Named providers — switchable from the menu bar.
-    //   "type": "openai" or "gemini"
-    //   "api-key": your API key for that provider
     "providers": {
-        "openai1": { "type": "openai", "api-key": "sk-your-key-here" }
-        // "openai2": { "type": "openai", "api-key": "sk-another-key" },
-        // "gemini1": { "type": "gemini", "api-key": "your-gemini-key" },
-        // "gemini2": { "type": "gemini", "api-key": "another-gemini-key" }
+        "OpenAI": { "type": "openai", "api-key": "sk-proj-xxx" },
+        "Gemini": { "type": "gemini", "api-key": "..." }
     },
-
-    // Which provider to use by default (must match a key in "providers")
-    "active-provider": "openai1",
+    "active-provider": "OpenAI",
 
     // Optional: text to prepend before every transcription result
     // "prefix": "",
