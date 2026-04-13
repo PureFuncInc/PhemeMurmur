@@ -4,31 +4,61 @@ import Foundation
 import os
 
 enum HotkeyKey: String, CaseIterable {
-    case rightShift   = "right-shift"
     case rightOption  = "right-option"
+    case leftOption   = "left-option"
+    case leftControl  = "left-control"
     case rightControl = "right-control"
+    case fn           = "fn"
+    case rightCommand = "right-command"
+    case rightShift   = "right-shift"
 
     var keyCode: Int64 {
         switch self {
-        case .rightShift:   return 0x3C
         case .rightOption:  return 0x3D
+        case .leftOption:   return 0x3A
+        case .leftControl:  return 0x3B
         case .rightControl: return 0x3E
+        case .fn:           return 0x3F
+        case .rightCommand: return 0x36
+        case .rightShift:   return 0x3C
         }
     }
 
+    /// Short name used in the parent menu item title (e.g. "Hotkey: Right Shift")
+    var shortName: String {
+        switch self {
+        case .rightOption:  return "Right Option"
+        case .leftOption:   return "Left Option"
+        case .leftControl:  return "Left Control"
+        case .rightControl: return "Right Control"
+        case .fn:           return "Fn"
+        case .rightCommand: return "Right Command"
+        case .rightShift:   return "Right Shift"
+        }
+    }
+
+    /// Full display name with macOS symbol shown in submenu items
     var displayName: String {
         switch self {
-        case .rightShift:   return "Right Shift"
-        case .rightOption:  return "Right Option"
-        case .rightControl: return "Right Control"
+        case .rightOption:  return "Right Option (⌥)"
+        case .leftOption:   return "Left Option (⌥)"
+        case .leftControl:  return "Left Control (^)"
+        case .rightControl: return "Right Control (^)"
+        case .fn:           return "Fn"
+        case .rightCommand: return "Right Command (⌘)"
+        case .rightShift:   return "Right Shift (⇧)"
         }
     }
 
     private var requiredFlag: CGEventFlags {
         switch self {
-        case .rightShift:   return .maskShift
         case .rightOption:  return .maskAlternate
+        case .leftOption:   return .maskAlternate
+        case .leftControl:  return .maskControl
         case .rightControl: return .maskControl
+        case .fn:           return .maskSecondaryFn
+        case .rightCommand: return .maskCommand
+        case .rightShift:   return .maskShift
         }
     }
 

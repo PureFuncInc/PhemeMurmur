@@ -262,14 +262,14 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rebuildHotkeySubmenu() {
         hotkeySubmenu.removeAllItems()
-        let options: [HotkeyKey] = [.rightShift, .rightControl]
+        let options: [HotkeyKey] = [.rightOption, .leftOption, .leftControl, .rightControl, .fn, .rightCommand, .rightShift]
         for key in options {
             let item = NSMenuItem(title: key.displayName, action: #selector(selectHotkey(_:)), keyEquivalent: "")
             item.representedObject = key.rawValue
             item.state = (key == currentHotkey) ? .on : .off
             hotkeySubmenu.addItem(item)
         }
-        hotkeyMenuItem.title = "Hotkey: \(currentHotkey.displayName)"
+        hotkeyMenuItem.title = "Hotkey: \(currentHotkey.shortName)"
     }
 
     @objc private func selectHotkey(_ sender: NSMenuItem) {
