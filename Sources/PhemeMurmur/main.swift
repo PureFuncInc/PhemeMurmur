@@ -20,6 +20,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var state: State = .idle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        Config.createDefaultConfigIfNeeded()
+
         // Load API key
         if let config = Config.loadConfig() {
             apiKey = config.apiKey
@@ -43,6 +45,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cancelMenuItem.isHidden = true
         statusMenu.addItem(cancelMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
+        statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
         statusMenu.addItem(NSMenuItem(title: "Quit PhemeMurmur", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = statusMenu
 
@@ -168,7 +171,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         switch state {
         case .idle:
             symbolName = "waveform"
-            color = .secondaryLabelColor
+            color = .white
         case .recording:
             symbolName = "record.circle"
             color = .systemRed
@@ -201,6 +204,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             button.image = nil
             button.title = "🗣️"
         }
+    }
+
+    @objc private func openConfigFolder() {
+        let url = URL(fileURLWithPath: (Config.configPath as NSString).deletingLastPathComponent)
+        NSWorkspace.shared.open(url)
     }
 
     @objc private func quitApp() {

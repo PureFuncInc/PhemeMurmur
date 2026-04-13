@@ -17,7 +17,7 @@ PhemeMurmur/
 │   ├── AudioRecorder.swift          # AVAudioEngine 錄音 → 16kHz mono WAV
 │   ├── TranscriptionService.swift   # OpenAI API multipart POST
 │   ├── PasteService.swift           # NSPasteboard + CGEvent 模擬 Cmd+V
-│   └── Config.swift                 # 常數 + config.json 讀取（API key、prefix）
+│   └── Config.swift                 # 常數 + config.jsonc 讀取（API key、prefix）
 └── scripts/
     └── generate_icon.swift          # 🗣️ emoji → .icns 轉換腳本
 ```
@@ -42,7 +42,7 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
 
 | State        | SF Symbol                  | Color                                        |
 | ------------ | -------------------------- | -------------------------------------------- |
-| Idle         | `waveform`                 | Gray (`.secondaryLabelColor`)                |
+| Idle         | `waveform`                 | White (`.white`)                             |
 | Recording    | `record.circle`            | Red (`.systemRed`)                           |
 | Transcribing | `text.bubble`              | Blue (`.systemBlue`)                         |
 | Error        | `exclamationmark.triangle` | Orange (`.systemOrange`), auto-reverts in 3s |
@@ -51,6 +51,7 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
 
 - **Status: {text}**
 - **Cancel Recording**（錄音中才顯示，點擊取消錄音）
+- **Open Config Folder**（用 Finder 開啟 `~/.config/pheme-murmur/`）
 - **Quit PhemeMurmur**（快捷鍵 Q）
 
 ### 資料流
@@ -73,15 +74,29 @@ IDLE ──[右Shift]──► RECORDING ──[右Shift]──► TRANSCRIBING 
 
 ## 內建設定
 
-- 設定檔路徑：`~/.config/pheme-murmur/config.json`
+- 設定檔路徑：`~/.config/pheme-murmur/config.jsonc`
 - 取樣率：16kHz
 - 聲道：Mono
 - 最短錄音：0.5s
 - 快捷鍵防抖：400ms
 - 錯誤圖示顯示：3s
 - 轉譯語言：`zh`
-- 轉譯提示詞：`請使用正體中文（繁體中文）
+- 轉譯提示詞：`請使用正體中文（繁體中文）`
 - 輸出前綴：`prefix`（可選，prepend 至轉譯文字前）
+
+### 設定檔格式（JSONC）
+
+支援 `//` 行註解與 `/* */` 區塊註解。首次啟動若設定檔不存在，會自動建立預設內容：
+
+```jsonc
+{
+  // Your OpenAI API key — get one at https://platform.openai.com/api-keys
+  "openai-api-key": "sk-your-key-here",
+
+  // Optional: text to prepend before every transcription result
+  // "prefix": ""
+}
+```
 
 ## 權限需求
 
