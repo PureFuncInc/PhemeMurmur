@@ -189,12 +189,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             do {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
-                var text = try await provider.transcribe(fileURL: fileURL, language: template?.language)
-                if let prompt = template?.prompt {
-                    print("Post-processing with: \(prompt)")
-                    text = try await provider.postProcess(text: text, instruction: prompt)
-                }
-                let finalText = text
+                let finalText = try await provider.transcribe(fileURL: fileURL, language: template?.language, prompt: template?.prompt)
                 await MainActor.run {
                     let output = (self.prefix ?? "") + finalText
                     print(">>> \(output)")

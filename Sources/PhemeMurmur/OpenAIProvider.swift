@@ -5,7 +5,7 @@ struct OpenAIProvider: TranscriptionProvider {
 
     let apiKey: String
 
-    func transcribe(fileURL: URL, language: String?) async throws -> String {
+    func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
         let model = Self.defaultModel
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
@@ -46,10 +46,16 @@ struct OpenAIProvider: TranscriptionProvider {
             throw TranscriptionError.decodingError
         }
 
-        return result.text
+        var text = result.text
+
+        if let prompt {
+            text = try await postProcess(text: text, instruction: prompt)
+        }
+
+        return text
     }
 
-    func postProcess(text: String, instruction: String) async throws -> String {
+    private func postProcess(text: String, instruction: String) async throws -> String {
         let url = URL(string: "https://api.openai.com/v1/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
