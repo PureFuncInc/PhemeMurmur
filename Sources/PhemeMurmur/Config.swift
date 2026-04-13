@@ -25,7 +25,7 @@ enum Config {
     static let minDuration: Double = 0.5
     static let debounceInterval: Double = 0.4
 
-    static let defaultPromptTemplateName = "traditional-chinese"
+    static let defaultPromptTemplateName = "zh_TW"
 
     static let configPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -48,8 +48,8 @@ enum Config {
     //   "language": input audio language (ISO-639-1), helps transcription accuracy
     //   "prompt": if set, sends transcribed text through Chat API for post-processing
     "prompt-templates": {
-        "traditional-chinese": { "language": "zh" },
-        "to-english": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }
+        "zh_TW": { "language": "zh" },
+        "zh_TW-en_US": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }
     }
 }
 """
