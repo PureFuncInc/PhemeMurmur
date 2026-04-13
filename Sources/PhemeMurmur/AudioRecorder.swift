@@ -25,41 +25,28 @@ final class AudioRecorder {
             throw RecorderError.formatError
         }
 
-        // If hardware format differs, we need a converter
-        let needsConversion = hardwareFormat.sampleRate != recordingFormat.sampleRate
-            || hardwareFormat.channelCount != recordingFormat.channelCount
+        guard let converter = AVAudioConverter(from: hardwareFormat, to: recordingFormat) else {
+            throw RecorderError.converterError
+        }
 
-        if needsConversion {
-            guard let converter = AVAudioConverter(from: hardwareFormat, to: recordingFormat) else {
-                throw RecorderError.converterError
+        inputNode.installTap(onBus: 0, bufferSize: 4096, format: hardwareFormat) { [weak self] buffer, _ in
+            guard let self = self else { return }
+            let frameCapacity = AVAudioFrameCount(
+                Double(buffer.frameLength) * recordingFormat.sampleRate / hardwareFormat.sampleRate
+            )
+            guard let convertedBuffer = AVAudioPCMBuffer(
+                pcmFormat: recordingFormat,
+                frameCapacity: frameCapacity
+            ) else { return }
+
+            var error: NSError?
+            converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
+                outStatus.pointee = .haveData
+                return buffer
             }
-
-            inputNode.installTap(onBus: 0, bufferSize: 4096, format: hardwareFormat) { [weak self] buffer, _ in
-                guard let self = self else { return }
-                let frameCapacity = AVAudioFrameCount(
-                    Double(buffer.frameLength) * recordingFormat.sampleRate / hardwareFormat.sampleRate
-                )
-                guard let convertedBuffer = AVAudioPCMBuffer(
-                    pcmFormat: recordingFormat,
-                    frameCapacity: frameCapacity
-                ) else { return }
-
-                var error: NSError?
-                converter.convert(to: convertedBuffer, error: &error) { _, outStatus in
-                    outStatus.pointee = .haveData
-                    return buffer
-                }
-                if error == nil {
-                    self.lock.lock()
-                    self.buffers.append(convertedBuffer)
-                    self.lock.unlock()
-                }
-            }
-        } else {
-            inputNode.installTap(onBus: 0, bufferSize: 4096, format: recordingFormat) { [weak self] buffer, _ in
-                guard let self = self else { return }
+            if error == nil {
                 self.lock.lock()
-                self.buffers.append(buffer)
+                self.buffers.append(convertedBuffer)
                 self.lock.unlock()
             }
         }

@@ -13,14 +13,12 @@ struct APIErrorDetail: Decodable {
 }
 
 enum TranscriptionError: Error, LocalizedError {
-    case noAPIKey
     case fileReadError
     case httpError(Int, String)
     case decodingError
 
     var errorDescription: String? {
         switch self {
-        case .noAPIKey: return "API key not found in \(Config.configPath)"
         case .fileReadError: return "Cannot read audio file"
         case .httpError(let code, let msg): return "API error (\(code)): \(msg)"
         case .decodingError: return "Cannot parse API response"

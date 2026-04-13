@@ -81,8 +81,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         case .recording:
             stopRecordingAndTranscribe()
         case .transcribing:
-            // Ignore while transcribing
-            break
+            break // Ignore while transcribing
         }
     }
 
