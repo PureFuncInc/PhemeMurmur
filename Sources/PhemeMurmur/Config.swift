@@ -32,6 +32,7 @@ struct ConfigFile: Decodable {
 
     let prefix: String?
     let promptTemplates: [String: PromptTemplate]?
+    let hotkey: String?
 
     enum CodingKeys: String, CodingKey {
         case openaiApiKey = "openai-api-key"
@@ -41,6 +42,12 @@ struct ConfigFile: Decodable {
         case activeProvider = "active-provider"
         case prefix
         case promptTemplates = "prompt-templates"
+        case hotkey
+    }
+
+    var resolvedHotkey: HotkeyKey {
+        guard let raw = hotkey, let k = HotkeyKey(rawValue: raw) else { return .rightShift }
+        return k
     }
 
     /// Builds the full provider map — from `providers` dict, or falling back to legacy single-key fields.
@@ -90,6 +97,9 @@ enum Config {
     },
     "active-provider": "OpenAI",
 
+    // Hotkey to start/stop recording. Options: right-shift (default), right-option, right-control
+    // "hotkey": "right-shift",
+
     // Optional: text to prepend before every transcription result
     // "prefix": "",
 
@@ -112,6 +122,22 @@ enum Config {
         try? defaultConfigContent.write(toFile: configPath, atomically: true, encoding: .utf8)
         print("Created default config at \(configPath)")
         print("Edit it and add your OpenAI API key to get started.")
+    }
+
+    /// Writes (or updates) the "hotkey" field in config.jsonc, preserving all other content.
+    static func saveHotkey(_ key: HotkeyKey) {
+        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+        let newEntry = "\"hotkey\": \"\(key.rawValue)\""
+
+        // Replace existing hotkey field if present
+        if let range = content.range(of: #""hotkey"\s*:\s*"[^"]*""#, options: .regularExpression) {
+            content.replaceSubrange(range, with: newEntry)
+        } else if let idx = content.firstIndex(of: "{") {
+            // Insert as first field after the opening brace
+            content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
+        }
+
+        try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
     }
 
     static func loadConfig() -> ConfigFile? {
