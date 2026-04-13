@@ -100,6 +100,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             prefix = config.prefix
             currentHotkey = config.resolvedHotkey
             hotkeyManager.key = currentHotkey
+            hotkeyMenuItem.title = "Hotkey: \(currentHotkey.displayName)"
             promptTemplates = config.promptTemplates ?? [:]
         } else {
             print("Error: Failed to parse \(Config.configPath)")
