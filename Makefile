@@ -1,8 +1,9 @@
-APP_NAME = PhemeMurmur
+APP_NAME  = PhemeMurmur
 BUILD_DIR = .build/release
 APP_BUNDLE = $(APP_NAME).app
-CONTENTS = $(APP_BUNDLE)/Contents
-MACOS = $(CONTENTS)/MacOS
+CONTENTS  = $(APP_BUNDLE)/Contents
+MACOS     = $(CONTENTS)/MacOS
+CERT_NAME = PhemeMurmurDev
 
 .PHONY: build app run clean icon install
 
@@ -19,6 +20,13 @@ app: build
 	cp $(BUILD_DIR)/$(APP_NAME) $(MACOS)/$(APP_NAME)
 	cp Resources/Info.plist $(CONTENTS)/Info.plist
 	cp Resources/AppIcon.icns $(CONTENTS)/Resources/AppIcon.icns
+	@bash scripts/ensure_signing_cert.sh "$(CERT_NAME)" || true
+	@if security find-certificate -c "$(CERT_NAME)" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1; then \
+		codesign --force --deep --sign "$(CERT_NAME)" $(APP_BUNDLE); \
+	else \
+		echo "⚠ Using ad-hoc signing (TCC permissions may not persist after rebuilds)"; \
+		codesign --force --deep --sign - $(APP_BUNDLE); \
+	fi
 
 run: app
 	open $(APP_BUNDLE)
