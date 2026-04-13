@@ -11,8 +11,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var providerSubmenu: NSMenu!
     private var escMonitor: Any?
     private var hotkeyMenuItem: NSMenuItem!
+    private var hotkeySubmenu: NSMenu!
     private var currentHotkey: HotkeyKey = .rightShift
-    private var hotkeyRecordingTimer: DispatchWorkItem?
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
@@ -63,12 +63,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         promptMenuItem = NSMenuItem(title: "Prompt", action: nil, keyEquivalent: "")
         statusMenu.addItem(promptMenuItem)
         statusMenu.setSubmenu(promptSubmenu, for: promptMenuItem)
-        hotkeyMenuItem = NSMenuItem(
-            title: "Hotkey: \(currentHotkey.displayName)",
-            action: #selector(startHotkeyRecording),
-            keyEquivalent: ""
-        )
+        hotkeySubmenu = NSMenu()
+        hotkeyMenuItem = NSMenuItem(title: "Hotkey", action: nil, keyEquivalent: "")
         statusMenu.addItem(hotkeyMenuItem)
+        statusMenu.setSubmenu(hotkeySubmenu, for: hotkeyMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
         statusMenu.addItem(NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "r"))
@@ -100,7 +98,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             prefix = config.prefix
             currentHotkey = config.resolvedHotkey
             hotkeyManager.key = currentHotkey
-            hotkeyMenuItem.title = "Hotkey: \(currentHotkey.displayName)"
             promptTemplates = config.promptTemplates ?? [:]
         } else {
             print("Error: Failed to parse \(Config.configPath)")
@@ -109,21 +106,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
         rebuildProviderSubmenu()
         rebuildPromptSubmenu()
+        rebuildHotkeySubmenu()
 
         // Setup hotkey
         hotkeyManager.onToggle = { [weak self] in
             self?.handleToggle()
-        }
-
-        hotkeyManager.onKeyRecorded = { [weak self] key in
-            guard let self else { return }
-            self.hotkeyRecordingTimer?.cancel()
-            self.hotkeyRecordingTimer = nil
-            self.currentHotkey = key
-            self.hotkeyMenuItem.title = "Hotkey: \(key.displayName)"
-            self.hotkeyMenuItem.action = #selector(AppDelegate.startHotkeyRecording)
-            Config.saveHotkey(key)
-            print("Hotkey changed to: \(key.displayName)")
         }
 
         if !HotkeyManager.checkAccessibility() {
@@ -273,25 +260,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("Switched prompt template to: \(name)")
     }
 
-    @objc private func startHotkeyRecording() {
-        guard state == .idle else { return }
-        hotkeyMenuItem.title = "Press a modifier key..."
-        hotkeyMenuItem.action = nil  // prevent re-click during capture
-
-        hotkeyManager.startRecordingKey()
-
-        let timer = DispatchWorkItem { [weak self] in
-            self?.cancelHotkeyRecording()
+    private func rebuildHotkeySubmenu() {
+        hotkeySubmenu.removeAllItems()
+        let options: [HotkeyKey] = [.rightShift, .rightControl]
+        for key in options {
+            let item = NSMenuItem(title: key.displayName, action: #selector(selectHotkey(_:)), keyEquivalent: "")
+            item.representedObject = key.rawValue
+            item.state = (key == currentHotkey) ? .on : .off
+            hotkeySubmenu.addItem(item)
         }
-        hotkeyRecordingTimer = timer
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5, execute: timer)
+        hotkeyMenuItem.title = "Hotkey: \(currentHotkey.displayName)"
     }
 
-    private func cancelHotkeyRecording() {
-        hotkeyManager.stopRecordingKey()
-        hotkeyMenuItem.title = "Hotkey: \(currentHotkey.displayName)"
-        hotkeyMenuItem.action = #selector(startHotkeyRecording)
-        hotkeyRecordingTimer = nil
+    @objc private func selectHotkey(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let key = HotkeyKey(rawValue: raw) else { return }
+        currentHotkey = key
+        hotkeyManager.key = key
+        Config.saveHotkey(key)
+        rebuildHotkeySubmenu()
+        print("Hotkey changed to: \(key.displayName)")
     }
 
     private func updateStatus(_ text: String) {

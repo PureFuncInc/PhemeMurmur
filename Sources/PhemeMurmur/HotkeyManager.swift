@@ -52,23 +52,6 @@ final class HotkeyManager {
 
     var onToggle: (() -> Void)?
 
-    // Recording mode — captures the next supported modifier key press
-    private let _isRecordingKey = OSAllocatedUnfairLock<Bool>(initialState: false)
-    fileprivate var isRecordingKey: Bool {
-        get { _isRecordingKey.withLock { $0 } }
-        set { _isRecordingKey.withLock { $0 = newValue } }
-    }
-
-    var onKeyRecorded: ((HotkeyKey) -> Void)?
-
-    func startRecordingKey() {
-        isRecordingKey = true
-    }
-
-    func stopRecordingKey() {
-        isRecordingKey = false
-    }
-
     func start() -> Bool {
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
@@ -106,18 +89,6 @@ final class HotkeyManager {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        if isRecordingKey {
-            // Capture any supported modifier key on key-down
-            guard let detected = HotkeyKey.allCases.first(where: { $0.keyCode == keyCode }),
-                  detected.isKeyDown(flags: flags) else { return }
-            isRecordingKey = false
-            DispatchQueue.main.async { [weak self] in
-                self?.onKeyRecorded?(detected)
-            }
-            return
-        }
-
-        // Normal mode: trigger only the configured key
         guard keyCode == key.keyCode, key.isKeyDown(flags: flags) else { return }
 
         let now = CFAbsoluteTimeGetCurrent()
