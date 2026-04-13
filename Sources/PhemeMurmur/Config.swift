@@ -1,14 +1,21 @@
 import Foundation
 
+struct PromptTemplate: Decodable {
+    let language: String?
+    let prompt: String?
+}
+
 struct ConfigFile: Decodable {
     let apiKey: String
     let prefix: String?
     let transcriptionModel: String?
+    let promptTemplates: [String: PromptTemplate]?
 
     enum CodingKeys: String, CodingKey {
         case apiKey = "openai-api-key"
         case prefix
         case transcriptionModel = "transcription-model"
+        case promptTemplates = "prompt-templates"
     }
 }
 
@@ -17,6 +24,8 @@ enum Config {
     static let channels: UInt32 = 1
     static let minDuration: Double = 0.5
     static let debounceInterval: Double = 0.4
+
+    static let defaultPromptTemplateName = "traditional-chinese"
 
     static let configPath: String = {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
@@ -33,7 +42,15 @@ enum Config {
 
     // Transcription model. Default is Mini (cheaper & faster).
     // For higher accuracy, switch to "gpt-4o-transcribe".
-    "transcription-model": "gpt-4o-mini-transcribe-2025-12-15"
+    "transcription-model": "gpt-4o-mini-transcribe-2025-12-15",
+
+    // Prompt templates — switchable from the menu bar.
+    //   "language": input audio language (ISO-639-1), helps transcription accuracy
+    //   "prompt": if set, sends transcribed text through Chat API for post-processing
+    "prompt-templates": {
+        "traditional-chinese": { "language": "zh" },
+        "to-english": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }
+    }
 }
 """
 

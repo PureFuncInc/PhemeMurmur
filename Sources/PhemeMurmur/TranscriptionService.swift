@@ -29,7 +29,7 @@ enum TranscriptionError: Error, LocalizedError {
 enum TranscriptionService {
     static let defaultModel = "gpt-4o-mini-transcribe-2025-12-15"
 
-    static func transcribe(fileURL: URL, apiKey: String, model: String = defaultModel) async throws -> String {
+    static func transcribe(fileURL: URL, apiKey: String, model: String = defaultModel, language: String? = nil) async throws -> String {
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
 
@@ -49,15 +49,12 @@ enum TranscriptionService {
         body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
         body.append("\(model)\r\n")
 
-        // language field — force Traditional Chinese output
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
-        body.append("zh\r\n")
-
-        // prompt field — steer toward Traditional Chinese characters
-        body.append("--\(boundary)\r\n")
-        body.append("Content-Disposition: form-data; name=\"prompt\"\r\n\r\n")
-        body.append("請使用正體中文（繁體中文）輸出。\r\n")
+        // language field
+        if let language {
+            body.append("--\(boundary)\r\n")
+            body.append("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+            body.append("\(language)\r\n")
+        }
 
         // file field
         body.append("--\(boundary)\r\n")
@@ -87,6 +84,46 @@ enum TranscriptionService {
         }
 
         return result.text
+    }
+
+    static func postProcess(text: String, instruction: String, apiKey: String) async throws -> String {
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+        let body: [String: Any] = [
+            "model": "gpt-5-nano",
+            "messages": [
+                ["role": "system", "content": instruction],
+                ["role": "user", "content": text],
+            ],
+        ]
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
+
+        let (data, response) = try await URLSession.shared.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw TranscriptionError.httpError(0, "Invalid response")
+        }
+
+        if httpResponse.statusCode != 200 {
+            if let errResp = try? JSONDecoder().decode(APIErrorResponse.self, from: data) {
+                throw TranscriptionError.httpError(httpResponse.statusCode, errResp.error.message)
+            }
+            let body = String(data: data, encoding: .utf8) ?? "unknown"
+            throw TranscriptionError.httpError(httpResponse.statusCode, body)
+        }
+
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let choices = json["choices"] as? [[String: Any]],
+              let message = choices.first?["message"] as? [String: Any],
+              let content = message["content"] as? String else {
+            throw TranscriptionError.decodingError
+        }
+
+        return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
 

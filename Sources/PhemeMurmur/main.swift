@@ -5,6 +5,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
     private var cancelMenuItem: NSMenuItem!
+    private var promptSubmenu: NSMenu!
     private var escMonitor: Any?
 
     private let hotkeyManager = HotkeyManager()
@@ -13,6 +14,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var apiKey: String?
     private var prefix: String?
     private var transcriptionModel: String = TranscriptionService.defaultModel
+    private var promptTemplates: [String: PromptTemplate] = [:]
+    private var activeTemplateName: String = Config.defaultPromptTemplateName
 
     private enum State {
         case idle
@@ -42,6 +45,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cancelMenuItem.isHidden = true
         statusMenu.addItem(cancelMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
+        promptSubmenu = NSMenu()
+        let promptItem = NSMenuItem(title: "Prompt", action: nil, keyEquivalent: "")
+        statusMenu.addItem(promptItem)
+        statusMenu.setSubmenu(promptSubmenu, for: promptItem)
+        statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
         statusMenu.addItem(NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "r"))
         statusMenu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
@@ -52,11 +60,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             apiKey = config.apiKey
             prefix = config.prefix
             transcriptionModel = config.transcriptionModel ?? TranscriptionService.defaultModel
+            promptTemplates = config.promptTemplates ?? [:]
         } else {
             print("Error: Failed to parse \(Config.configPath)")
             updateStatus("Error: Invalid config syntax")
             showErrorIcon(persistent: true)
         }
+        rebuildPromptSubmenu()
 
         // Setup hotkey
         hotkeyManager.onToggle = { [weak self] in
@@ -147,9 +157,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         Task {
             do {
-                let text = try await TranscriptionService.transcribe(fileURL: fileURL, apiKey: apiKey, model: transcriptionModel)
+                let template = self.promptTemplates[self.activeTemplateName]
+                print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
+                var text = try await TranscriptionService.transcribe(fileURL: fileURL, apiKey: apiKey, model: transcriptionModel, language: template?.language)
+                if let prompt = template?.prompt {
+                    print("Post-processing with: \(prompt)")
+                    text = try await TranscriptionService.postProcess(text: text, instruction: prompt, apiKey: apiKey)
+                }
+                let finalText = text
                 await MainActor.run {
-                    let output = (self.prefix ?? "") + text
+                    let output = (self.prefix ?? "") + finalText
                     print(">>> \(output)")
                     PasteService.pasteText(output)
                     self.state = .idle
@@ -167,6 +184,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Clean up temp file
             try? FileManager.default.removeItem(at: fileURL)
         }
+    }
+
+    private func rebuildPromptSubmenu() {
+        promptSubmenu.removeAllItems()
+        for name in promptTemplates.keys.sorted() {
+            let item = NSMenuItem(title: name, action: #selector(selectPromptTemplate(_:)), keyEquivalent: "")
+            item.representedObject = name
+            item.state = (name == activeTemplateName) ? .on : .off
+            promptSubmenu.addItem(item)
+        }
+    }
+
+    @objc private func selectPromptTemplate(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        activeTemplateName = name
+        rebuildPromptSubmenu()
+        print("Switched prompt template to: \(name)")
     }
 
     private func updateStatus(_ text: String) {

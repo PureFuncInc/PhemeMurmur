@@ -26,6 +26,7 @@ run: app
 install: app
 	rm -rf /Applications/$(APP_BUNDLE)
 	cp -r $(APP_BUNDLE) /Applications/$(APP_BUNDLE)
+	rm -f ~/.config/pheme-murmur/.onboarding-done
 
 clean:
 	rm -rf .build $(APP_BUNDLE)
