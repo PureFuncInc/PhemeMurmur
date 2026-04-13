@@ -10,10 +10,26 @@ enum ProviderType: String, Decodable {
     case gemini
 }
 
+struct ProviderEntry: Decodable {
+    let type: ProviderType
+    let apiKey: String
+
+    enum CodingKeys: String, CodingKey {
+        case type
+        case apiKey = "api-key"
+    }
+}
+
 struct ConfigFile: Decodable {
+    // Legacy single-key fields
     let openaiApiKey: String?
     let geminiApiKey: String?
     let provider: ProviderType?
+
+    // Multi-provider support
+    let providers: [String: ProviderEntry]?
+    let activeProvider: String?
+
     let prefix: String?
     let transcriptionModel: String?
     let promptTemplates: [String: PromptTemplate]?
@@ -22,19 +38,36 @@ struct ConfigFile: Decodable {
         case openaiApiKey = "openai-api-key"
         case geminiApiKey = "gemini-api-key"
         case provider
+        case providers
+        case activeProvider = "active-provider"
         case prefix
         case transcriptionModel = "transcription-model"
         case promptTemplates = "prompt-templates"
     }
 
-    /// Resolves the active provider type: explicit `provider` field, or whichever key is present.
-    var resolvedProvider: ProviderType? {
-        if let provider { return provider }
-        if openaiApiKey != nil && geminiApiKey == nil { return .openai }
-        if geminiApiKey != nil && openaiApiKey == nil { return .gemini }
-        // Both keys present but no explicit provider — default to openai
-        if openaiApiKey != nil { return .openai }
-        return nil
+    /// Builds the full provider map — from `providers` dict, or falling back to legacy single-key fields.
+    var resolvedProviders: [String: ProviderEntry] {
+        if let providers, !providers.isEmpty { return providers }
+        // Fallback: build from legacy single-key fields
+        var result: [String: ProviderEntry] = [:]
+        if let key = openaiApiKey {
+            result["openai"] = ProviderEntry(type: .openai, apiKey: key)
+        }
+        if let key = geminiApiKey {
+            result["gemini"] = ProviderEntry(type: .gemini, apiKey: key)
+        }
+        return result
+    }
+
+    /// Resolves the default active provider name.
+    var resolvedActiveProvider: String? {
+        if let activeProvider { return activeProvider }
+        // Legacy: use explicit provider field
+        if let provider { return provider.rawValue }
+        let resolved = resolvedProviders
+        if resolved.count == 1 { return resolved.keys.first }
+        // Default to first sorted key
+        return resolved.keys.sorted().first
     }
 }
 
@@ -53,19 +86,23 @@ enum Config {
 
     static let defaultConfigContent = """
 {
-    // Provider: "openai" or "gemini". Auto-detected if only one key is set.
-    // "provider": "openai",
+    // Named providers — switchable from the menu bar.
+    //   "type": "openai" or "gemini"
+    //   "api-key": your API key for that provider
+    "providers": {
+        "openai1": { "type": "openai", "api-key": "sk-your-key-here" }
+        // "openai2": { "type": "openai", "api-key": "sk-another-key" },
+        // "gemini1": { "type": "gemini", "api-key": "your-gemini-key" },
+        // "gemini2": { "type": "gemini", "api-key": "another-gemini-key" }
+    },
 
-    // OpenAI API key — get one at https://platform.openai.com/api-keys
-    "openai-api-key": "sk-your-key-here",
-
-    // Gemini API key — get one at https://aistudio.google.com/apikey
-    // "gemini-api-key": "your-gemini-key-here",
+    // Which provider to use by default (must match a key in "providers")
+    "active-provider": "openai1",
 
     // Optional: text to prepend before every transcription result
     // "prefix": "",
 
-    // Transcription model (provider-specific).
+    // Transcription model (provider-specific, overrides provider default).
     //   OpenAI default: "gpt-4o-mini-transcribe-2025-12-15"
     //   Gemini default: "gemini-3.1-flash-lite-preview"
     // "transcription-model": "gpt-4o-mini-transcribe-2025-12-15",

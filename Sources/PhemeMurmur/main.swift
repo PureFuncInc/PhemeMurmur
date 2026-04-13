@@ -7,16 +7,23 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancelMenuItem: NSMenuItem!
     private var promptMenuItem: NSMenuItem!
     private var promptSubmenu: NSMenu!
+    private var providerMenuItem: NSMenuItem!
+    private var providerSubmenu: NSMenu!
     private var escMonitor: Any?
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
     private let onboarding = OnboardingWindow()
-    private var provider: TranscriptionProvider?
+    private var providers: [String: TranscriptionProvider] = [:]
+    private var activeProviderName: String = ""
     private var prefix: String?
     private var transcriptionModel: String?
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
+
+    private var activeProvider: TranscriptionProvider? {
+        providers[activeProviderName]
+    }
 
     private enum State {
         case idle
@@ -46,6 +53,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         cancelMenuItem.isHidden = true
         statusMenu.addItem(cancelMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
+        providerSubmenu = NSMenu()
+        providerMenuItem = NSMenuItem(title: "Provider", action: nil, keyEquivalent: "")
+        statusMenu.addItem(providerMenuItem)
+        statusMenu.setSubmenu(providerSubmenu, for: providerMenuItem)
         promptSubmenu = NSMenu()
         promptMenuItem = NSMenuItem(title: "Prompt", action: nil, keyEquivalent: "")
         statusMenu.addItem(promptMenuItem)
@@ -58,21 +69,25 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         // Load config
         if let config = Config.loadConfig() {
-            switch config.resolvedProvider {
-            case .openai:
-                if let key = config.openaiApiKey {
-                    provider = OpenAIProvider(apiKey: key)
-                    print("Provider: OpenAI")
+            let entries = config.resolvedProviders
+            for (name, entry) in entries {
+                switch entry.type {
+                case .openai:
+                    providers[name] = OpenAIProvider(apiKey: entry.apiKey)
+                case .gemini:
+                    providers[name] = GeminiProvider(apiKey: entry.apiKey)
                 }
-            case .gemini:
-                if let key = config.geminiApiKey {
-                    provider = GeminiProvider(apiKey: key)
-                    print("Provider: Gemini")
-                }
-            case nil:
+            }
+            if let active = config.resolvedActiveProvider, providers[active] != nil {
+                activeProviderName = active
+            }
+            if providers.isEmpty {
                 print("Error: No API key configured in \(Config.configPath)")
                 updateStatus("Error: No API key")
                 showErrorIcon(persistent: true)
+            } else {
+                print("Providers: \(providers.keys.sorted().joined(separator: ", "))")
+                print("Active provider: \(activeProviderName)")
             }
             prefix = config.prefix
             transcriptionModel = config.transcriptionModel
@@ -82,6 +97,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             updateStatus("Error: Invalid config syntax")
             showErrorIcon(persistent: true)
         }
+        rebuildProviderSubmenu()
         rebuildPromptSubmenu()
 
         // Setup hotkey
@@ -159,17 +175,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
 
-        guard let provider = provider else {
+        guard let provider = activeProvider else {
             state = .idle
             updateStatus("Error: No API key")
             showErrorIcon(persistent: true)
-            print("Cannot transcribe: API key not configured.")
+            print("Cannot transcribe: No active provider configured.")
             return
         }
 
         state = .transcribing
         updateStatus("Transcribing...")
-        print("⏹ Stopped. Transcribing...")
+        print("⏹ Stopped. Transcribing via \(self.activeProviderName)...")
 
         Task {
             do {
@@ -200,6 +216,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             // Clean up temp file
             try? FileManager.default.removeItem(at: fileURL)
         }
+    }
+
+    private func rebuildProviderSubmenu() {
+        providerSubmenu.removeAllItems()
+        for name in providers.keys.sorted() {
+            let item = NSMenuItem(title: name, action: #selector(selectProvider(_:)), keyEquivalent: "")
+            item.representedObject = name
+            item.state = (name == activeProviderName) ? .on : .off
+            providerSubmenu.addItem(item)
+        }
+        providerMenuItem?.title = "Provider: \(activeProviderName)"
+    }
+
+    @objc private func selectProvider(_ sender: NSMenuItem) {
+        guard let name = sender.representedObject as? String else { return }
+        activeProviderName = name
+        rebuildProviderSubmenu()
+        print("Switched provider to: \(name)")
     }
 
     private func rebuildPromptSubmenu() {
