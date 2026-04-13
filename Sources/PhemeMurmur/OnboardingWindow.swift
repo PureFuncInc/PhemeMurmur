@@ -1,0 +1,214 @@
+import AppKit
+
+final class OnboardingWindow: NSObject, NSWindowDelegate {
+    private static let markerPath: String = {
+        let dir = (Config.configPath as NSString).deletingLastPathComponent
+        return "\(dir)/.onboarding-done"
+    }()
+
+    static var needsOnboarding: Bool {
+        !FileManager.default.fileExists(atPath: markerPath)
+    }
+
+    static func markOnboardingComplete() {
+        FileManager.default.createFile(atPath: markerPath, contents: nil)
+    }
+
+    private var window: NSWindow?
+    private var currentPage = 0
+    private var pageContainer: NSView!
+    private var nextButton: NSButton!
+    private var backButton: NSButton!
+    private var pageIndicator: NSTextField!
+    private var onDismiss: (() -> Void)?
+
+    private struct Page {
+        let symbolName: String
+        let symbolColor: NSColor
+        let title: String
+        let body: String
+    }
+
+    private let pages: [Page] = [
+        Page(
+            symbolName: "waveform.circle.fill",
+            symbolColor: .systemBlue,
+            title: "歡迎使用 PhemeMurmur",
+            body: "PhemeMurmur 是一款 macOS 選單列語音轉文字工具。\n按下快捷鍵即可錄音，自動將語音轉為繁體中文文字，\n並直接貼上到您正在使用的應用程式中。"
+        ),
+        Page(
+            symbolName: "keyboard.fill",
+            symbolColor: .systemGreen,
+            title: "使用方式",
+            body: "按下右側 Shift 鍵開始錄音，\n再次按下右側 Shift 鍵停止錄音並開始轉錄。\n按 Esc 鍵可以取消錄音。\n\n轉錄完成後，文字會自動貼到游標所在位置。\n也會複製到剪貼簿。"
+        ),
+        Page(
+            symbolName: "key.fill",
+            symbolColor: .systemOrange,
+            title: "設定 API Key",
+            body: "PhemeMurmur 使用 OpenAI API 進行語音轉文字。\n\n首次使用前，請點擊選單列中的「Open Config Folder」，\n在 config.jsonc 檔案中填入您的 OpenAI API Key。\n\n取得 API Key：platform.openai.com/api-keys"
+        ),
+        Page(
+            symbolName: "hand.raised.circle.fill",
+            symbolColor: .systemPurple,
+            title: "輔助使用權限",
+            body: "PhemeMurmur 需要「輔助使用」權限來偵測快捷鍵\n以及模擬貼上操作。\n\n啟動後系統會提示您授權，\n請前往「系統設定 → 隱私權與安全性 → 輔助使用」\n允許 PhemeMurmur。\n\n⚠️ 授權完成後，請點選選單列中的「Restart」重新啟動，\n以確保權限生效。"
+        ),
+    ]
+
+    func showIfNeeded(onDismiss: @escaping () -> Void) {
+        guard OnboardingWindow.needsOnboarding else {
+            onDismiss()
+            return
+        }
+        self.onDismiss = onDismiss
+        showWindow()
+    }
+
+    private func showWindow() {
+        let width: CGFloat = 520
+        let height: CGFloat = 420
+        let rect = NSRect(x: 0, y: 0, width: width, height: height)
+
+        let w = NSWindow(
+            contentRect: rect,
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        w.title = "PhemeMurmur"
+        w.center()
+        w.isReleasedWhenClosed = false
+        w.delegate = self
+        w.level = .floating
+
+        let contentView = NSView(frame: rect)
+
+        // Page container
+        pageContainer = NSView(frame: NSRect(x: 0, y: 60, width: width, height: height - 60))
+        contentView.addSubview(pageContainer)
+
+        // Bottom bar
+        let bottomBar = NSView(frame: NSRect(x: 0, y: 0, width: width, height: 60))
+
+        backButton = NSButton(title: "上一步", target: self, action: #selector(goBack))
+        backButton.bezelStyle = .rounded
+        backButton.frame = NSRect(x: 20, y: 15, width: 80, height: 30)
+        bottomBar.addSubview(backButton)
+
+        pageIndicator = NSTextField(labelWithString: "")
+        pageIndicator.frame = NSRect(x: width / 2 - 60, y: 20, width: 120, height: 20)
+        pageIndicator.alignment = .center
+        pageIndicator.textColor = .secondaryLabelColor
+        pageIndicator.font = .systemFont(ofSize: 12)
+        bottomBar.addSubview(pageIndicator)
+
+        nextButton = NSButton(title: "下一步", target: self, action: #selector(goNext))
+        nextButton.bezelStyle = .rounded
+        nextButton.keyEquivalent = "\r"
+        nextButton.frame = NSRect(x: width - 100, y: 15, width: 80, height: 30)
+        bottomBar.addSubview(nextButton)
+
+        contentView.addSubview(bottomBar)
+        w.contentView = contentView
+        window = w
+
+        renderPage()
+        w.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
+    }
+
+    private func renderPage() {
+        pageContainer.subviews.forEach { $0.removeFromSuperview() }
+
+        let page = pages[currentPage]
+        let containerWidth = pageContainer.bounds.width
+        let containerHeight = pageContainer.bounds.height
+
+        // SF Symbol icon
+        let iconSize: CGFloat = 72
+        let sizeConfig = NSImage.SymbolConfiguration(pointSize: iconSize, weight: .light, scale: .large)
+        let colorConfig = NSImage.SymbolConfiguration(paletteColors: [page.symbolColor])
+        let config = sizeConfig.applying(colorConfig)
+
+        let iconView = NSImageView(frame: NSRect(
+            x: (containerWidth - iconSize * 1.2) / 2,
+            y: containerHeight - iconSize * 1.2 - 30,
+            width: iconSize * 1.2,
+            height: iconSize * 1.2
+        ))
+        if let image = NSImage(systemSymbolName: page.symbolName, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config) {
+            iconView.image = image
+            iconView.imageScaling = .scaleProportionallyUpOrDown
+        }
+        pageContainer.addSubview(iconView)
+
+        // Title
+        let titleLabel = NSTextField(labelWithString: page.title)
+        titleLabel.font = .systemFont(ofSize: 22, weight: .bold)
+        titleLabel.alignment = .center
+        titleLabel.frame = NSRect(
+            x: 30,
+            y: containerHeight - iconSize * 1.2 - 70,
+            width: containerWidth - 60,
+            height: 30
+        )
+        pageContainer.addSubview(titleLabel)
+
+        // Body
+        let bodyLabel = NSTextField(labelWithString: page.body)
+        bodyLabel.font = .systemFont(ofSize: 14)
+        bodyLabel.alignment = .center
+        bodyLabel.textColor = .secondaryLabelColor
+        bodyLabel.lineBreakMode = .byWordWrapping
+        bodyLabel.maximumNumberOfLines = 0
+        bodyLabel.frame = NSRect(
+            x: 40,
+            y: 10,
+            width: containerWidth - 80,
+            height: containerHeight - iconSize * 1.2 - 85
+        )
+        pageContainer.addSubview(bodyLabel)
+
+        // Update buttons
+        backButton.isHidden = currentPage == 0
+        let isLast = currentPage == pages.count - 1
+        nextButton.title = isLast ? "開始使用" : "下一步"
+
+        // Page indicator dots
+        let dots = (0..<pages.count).map { i in
+            i == currentPage ? "●" : "○"
+        }.joined(separator: "  ")
+        pageIndicator.stringValue = dots
+    }
+
+    @objc private func goNext() {
+        if currentPage < pages.count - 1 {
+            currentPage += 1
+            renderPage()
+        } else {
+            dismiss()
+        }
+    }
+
+    @objc private func goBack() {
+        if currentPage > 0 {
+            currentPage -= 1
+            renderPage()
+        }
+    }
+
+    private func dismiss() {
+        OnboardingWindow.markOnboardingComplete()
+        window?.close()
+        window = nil
+        onDismiss?()
+    }
+
+    func windowWillClose(_ notification: Notification) {
+        OnboardingWindow.markOnboardingComplete()
+        onDismiss?()
+        onDismiss = nil
+    }
+}

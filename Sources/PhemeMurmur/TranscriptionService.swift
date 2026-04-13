@@ -45,7 +45,7 @@ enum TranscriptionService {
         // model field
         body.append("--\(boundary)\r\n")
         body.append("Content-Disposition: form-data; name=\"model\"\r\n\r\n")
-        body.append("gpt-4o-transcribe\r\n")
+        body.append("gpt-4o-mini-transcribe-2025-12-15\r\n")
 
         // language field — force Traditional Chinese output
         body.append("--\(boundary)\r\n")

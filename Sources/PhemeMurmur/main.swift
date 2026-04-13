@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
+    private let onboarding = OnboardingWindow()
     private var apiKey: String?
     private var prefix: String?
 
@@ -22,7 +23,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
         Config.createDefaultConfigIfNeeded()
 
-        // Load API key
+        onboarding.showIfNeeded { [weak self] in
+            self?.setupApp()
+        }
+    }
+
+    private func setupApp() {
         // Setup menu bar
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         updateIcon()
