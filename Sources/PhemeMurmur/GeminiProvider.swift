@@ -22,12 +22,13 @@ struct GeminiProvider: TranscriptionProvider {
             default: languageLabel = "Traditional Chinese (繁體中文)"
         }
 
-        var instructions = "Transcribe this audio in \(languageLabel). The speaker primarily speaks Chinese, with English nouns, verbs, and technical terms mixed in. Preserve English words as-is without translating them into Chinese."
+        var instructions: String
 
         if let prompt {
-            instructions += "\n\nThen apply the following instruction to the transcription result:\n\(prompt)"
+            instructions = "Transcribe this audio. The speaker primarily speaks \(languageLabel), with English nouns, verbs, and technical terms mixed in."
+            instructions += "\n\nAfter transcribing, apply the following instruction to the transcription result and return ONLY the final result:\n\(prompt)"
         } else {
-            instructions += " Output ONLY the exact transcription text, nothing else."
+            instructions = "Transcribe this audio in \(languageLabel). The speaker primarily speaks Chinese, with English nouns, verbs, and technical terms mixed in. Preserve English words as-is without translating them into Chinese. Output ONLY the exact transcription text, nothing else."
         }
 
         let body: [String: Any] = [
