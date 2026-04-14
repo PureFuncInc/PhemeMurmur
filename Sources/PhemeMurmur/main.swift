@@ -9,7 +9,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var promptSubmenu: NSMenu!
     private var providerMenuItem: NSMenuItem!
     private var providerSubmenu: NSMenu!
-    private var escMonitor: Any?
     private var hotkeyMenuItem: NSMenuItem!
     private var hotkeySubmenu: NSMenu!
     private var currentHotkey: HotkeyKey = .rightShift
@@ -113,12 +112,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         hotkeyManager.onToggle = { [weak self] in
             self?.handleToggle()
         }
-
-        // Global Esc key monitor for cancelling recording
-        escMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            if event.keyCode == 0x35 { // Escape
-                self?.handleCancel()
-            }
+        hotkeyManager.onCancel = { [weak self] in
+            self?.handleCancel()
         }
 
         if HotkeyManager.checkAccessibility() {
@@ -372,9 +367,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func quitApp() {
         accessibilityPollTimer?.invalidate()
-        if let monitor = escMonitor {
-            NSEvent.removeMonitor(monitor)
-        }
         if audioRecorder.isRecording {
             _ = audioRecorder.stopRecording()
         }

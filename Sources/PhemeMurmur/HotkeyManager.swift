@@ -81,9 +81,11 @@ final class HotkeyManager {
     }
 
     var onToggle: (() -> Void)?
+    var onCancel: (() -> Void)?
 
     func start() -> Bool {
         let eventMask: CGEventMask = (1 << CGEventType.flagsChanged.rawValue)
+            | (1 << CGEventType.keyDown.rawValue)
         let selfPtr = Unmanaged.passUnretained(self).toOpaque()
 
         guard let tap = CGEvent.tapCreate(
@@ -130,6 +132,17 @@ final class HotkeyManager {
         }
     }
 
+    private static let escKeyCode: Int64 = 0x35
+
+    fileprivate func handleKeyDown(_ event: CGEvent) {
+        let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
+        guard keyCode == Self.escKeyCode else { return }
+
+        DispatchQueue.main.async { [weak self] in
+            self?.onCancel?()
+        }
+    }
+
     fileprivate func reenableIfNeeded() {
         guard let tap = eventTap else { return }
         CGEvent.tapEnable(tap: tap, enable: true)
@@ -161,7 +174,14 @@ private func hotkeyCallback(
         manager.reenableIfNeeded()
         return Unmanaged.passUnretained(event)
     }
-    manager.handleFlagsChanged(event)
+    switch type {
+    case .flagsChanged:
+        manager.handleFlagsChanged(event)
+    case .keyDown:
+        manager.handleKeyDown(event)
+    default:
+        break
+    }
 
     return Unmanaged.passUnretained(event)
 }
