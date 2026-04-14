@@ -36,10 +36,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         Config.createDefaultConfigIfNeeded()
+        installEditMenu()
 
         onboarding.showIfNeeded { [weak self] in
             self?.setupApp()
         }
+    }
+
+    /// Installs a minimal main menu containing an Edit submenu with standard Cut/Copy/Paste/Select All
+    /// shortcuts. This app is LSUIElement, so the menu is not visible, but the key equivalents are
+    /// required for Cmd+X/C/V/A to work inside NSAlert accessory text fields and other dialogs.
+    private func installEditMenu() {
+        let mainMenu = NSMenu()
+        let editMenuItem = NSMenuItem()
+        mainMenu.addItem(editMenuItem)
+        let editMenu = NSMenu(title: "Edit")
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+        editMenuItem.submenu = editMenu
+        NSApp.mainMenu = mainMenu
     }
 
     private func setupApp() {
