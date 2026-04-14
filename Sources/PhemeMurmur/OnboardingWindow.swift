@@ -37,18 +37,13 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         Page(
             emoji: "⌨️",
             title: "使用方式",
-            body: "按下右側 Shift 鍵開始錄音，\n再次按下右側 Shift 鍵停止錄音並開始轉錄。\n按 Esc 鍵可以取消錄音。\n\n轉錄完成後，文字會自動貼到游標所在位置並複製到剪貼簿。"
+            body: "按下快捷鍵開始錄音，完成錄音後後再次按下快捷鍵會結束錄製並開始轉錄。\n按 Esc 鍵可以取消錄音。\n\n預設快捷鍵為右側 Shift 鍵，\n可在選單列的「Hotkey」選單中更改。\n\n轉錄完成後，文字會自動貼到游標所在位置並複製到剪貼簿。"
         ),
         Page(
             emoji: "🔑",
             title: "設定 API Key",
             body: "PhemeMurmur 支援 OpenAI 與 Gemini 兩種語音轉文字服務。\n\n請點擊選單列中的「Open Config Folder」，\n在 config.jsonc 填入對應的 API Key。\n\n您可以透過「active-provider」設定預設啟用的服務，\n也能隨時在選單列的「Provider」選單中切換。"
-        ),
-        Page(
-            emoji: "🛡️",
-            title: "輔助使用權限",
-            body: "PhemeMurmur 需要「輔助使用」權限來偵測快捷鍵\n以及模擬貼上操作。\n\n啟動後系統會提示您授權，\n請前往「系統設定 → 隱私權與安全性 → 輔助使用」\n允許 PhemeMurmur。\n\n⚠️⚠️⚠️ 授權完成後，請點選選單列中的「Restart」重新啟動，\n以確保權限生效。"
-        ),
+        )
     ]
 
     func showIfNeeded(onDismiss: @escaping () -> Void) {

@@ -5,8 +5,6 @@ import os
 
 enum HotkeyKey: String, CaseIterable {
     case fn           = "fn"
-    case leftControl  = "left-control"
-    case leftOption   = "left-option"
     case rightCommand = "right-command"
     case rightOption  = "right-option"
     case rightControl = "right-control"
@@ -15,8 +13,6 @@ enum HotkeyKey: String, CaseIterable {
     var keyCode: Int64 {
         switch self {
         case .fn:           return 0x3F
-        case .leftControl:  return 0x3B
-        case .leftOption:   return 0x3A
         case .rightCommand: return 0x36
         case .rightOption:  return 0x3D
         case .rightControl: return 0x3E
@@ -28,8 +24,6 @@ enum HotkeyKey: String, CaseIterable {
     var shortName: String {
         switch self {
         case .fn:           return "Fn"
-        case .leftControl:  return "Left Control"
-        case .leftOption:   return "Left Option"
         case .rightCommand: return "Right Command"
         case .rightOption:  return "Right Option"
         case .rightControl: return "Right Control"
@@ -41,8 +35,6 @@ enum HotkeyKey: String, CaseIterable {
     var displayName: String {
         switch self {
         case .fn:           return "Fn"
-        case .leftControl:  return "Left Control (^)"
-        case .leftOption:   return "Left Option (⌥)"
         case .rightCommand: return "Right Command (⌘)"
         case .rightOption:  return "Right Option (⌥)"
         case .rightControl: return "Right Control (^)"
@@ -53,8 +45,6 @@ enum HotkeyKey: String, CaseIterable {
     private var requiredFlag: CGEventFlags {
         switch self {
         case .fn:           return .maskSecondaryFn
-        case .leftControl:  return .maskControl
-        case .leftOption:   return .maskAlternate
         case .rightCommand: return .maskCommand
         case .rightOption:  return .maskAlternate
         case .rightControl: return .maskControl
