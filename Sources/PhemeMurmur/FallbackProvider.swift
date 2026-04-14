@@ -1,7 +1,7 @@
 import Foundation
 
 /// Wraps a chain of single-model `TranscriptionProvider` instances and walks
-/// the chain on HTTP 429 responses. Each model that 429s gets a 60-second
+/// the chain on HTTP 429/503 responses. Each model that hits these gets a 60-second
 /// cooldown; requests during cooldown skip that model automatically.
 final class FallbackProvider: TranscriptionProvider {
     private let chain: [String]
@@ -52,8 +52,9 @@ final class FallbackProvider: TranscriptionProvider {
                 )
                 recordSuccess(model: model)
                 return text
-            } catch TranscriptionError.httpError(429, let message) {
-                print("Model \(model) rate limited (\(message)), cooling for \(Int(cooldown))s")
+            } catch TranscriptionError.httpError(let code, let message)
+                    where code == 429 || code == 503 {
+                print("Model \(model) unavailable (\(code): \(message)), cooling for \(Int(cooldown))s")
                 recordCooldown(model: model)
                 continue
             } catch {
