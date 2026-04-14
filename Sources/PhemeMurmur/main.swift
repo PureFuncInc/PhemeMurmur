@@ -99,7 +99,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.setSubmenu(hotkeySubmenu, for: hotkeyMenuItem)
         statusMenu.addItem(NSMenuItem.separator())
         statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
-        statusMenu.addItem(NSMenuItem(title: "Restart", action: #selector(restartApp), keyEquivalent: "r"))
         statusMenu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
         statusItem.menu = statusMenu
 
@@ -609,15 +608,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openConfigFolder() {
         let url = URL(fileURLWithPath: (Config.configPath as NSString).deletingLastPathComponent)
         NSWorkspace.shared.open(url)
-    }
-
-    @objc private func restartApp() {
-        let bundlePath = Bundle.main.bundlePath
-        let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "sleep 2 && open \"\(bundlePath)\""]
-        try? process.run()
-        quitApp()
     }
 
     @objc private func quitApp() {
