@@ -102,6 +102,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             currentHotkey = config.resolvedHotkey
             hotkeyManager.key = currentHotkey
             promptTemplates = config.promptTemplates ?? [:]
+            if let saved = config.activePromptTemplate, promptTemplates[saved] != nil {
+                activeTemplateName = saved
+            }
         } else {
             print("Error: Failed to parse \(Config.configPath)")
             updateStatus("Error: Invalid config syntax")
@@ -273,14 +276,78 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             item.state = (name == activeProviderName) ? .on : .off
             providerSubmenu.addItem(item)
         }
+        if !activeProviderName.isEmpty {
+            providerSubmenu.addItem(NSMenuItem.separator())
+            let setKeyItem = NSMenuItem(
+                title: "Set API Key for \(activeProviderName)…",
+                action: #selector(promptForAPIKey),
+                keyEquivalent: ""
+            )
+            providerSubmenu.addItem(setKeyItem)
+        }
         providerMenuItem?.title = "Provider: \(activeProviderName)"
     }
 
     @objc private func selectProvider(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         activeProviderName = name
+        Config.saveActiveProvider(name)
         rebuildProviderSubmenu()
         print("Switched provider to: \(name)")
+    }
+
+    @objc private func promptForAPIKey() {
+        let name = activeProviderName
+        guard !name.isEmpty else { return }
+
+        let alert = NSAlert()
+        alert.messageText = "Set API Key for \(name)"
+        alert.informativeText = "The key will be saved to config.jsonc."
+        alert.alertStyle = .informational
+        alert.addButton(withTitle: "Save")
+        alert.addButton(withTitle: "Cancel")
+
+        let textField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
+        textField.placeholderString = "API key"
+        alert.accessoryView = textField
+        alert.window.initialFirstResponder = textField
+
+        NSApp.activate(ignoringOtherApps: true)
+        let response = alert.runModal()
+        guard response == .alertFirstButtonReturn else { return }
+
+        let newKey = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !newKey.isEmpty else { return }
+
+        if !Config.saveAPIKey(providerName: name, apiKey: newKey) {
+            let err = NSAlert()
+            err.messageText = "Failed to save API key"
+            err.informativeText = "Could not locate provider \"\(name)\" in config.jsonc. Please edit the file manually."
+            err.alertStyle = .warning
+            err.runModal()
+            return
+        }
+
+        // Reload provider instances from the updated config.
+        if let config = Config.loadConfig() {
+            providers.removeAll()
+            for (n, entry) in config.resolvedProviders {
+                switch entry.type {
+                case .openai:
+                    providers[n] = OpenAIProvider(apiKey: entry.apiKey)
+                case .gemini:
+                    providers[n] = GeminiProvider(apiKey: entry.apiKey)
+                }
+            }
+            if providers[activeProviderName] == nil {
+                activeProviderName = providers.keys.sorted().first ?? ""
+            }
+            rebuildProviderSubmenu()
+            if state == .idle && !providers.isEmpty {
+                updateStatus("Idle")
+            }
+            print("Updated API key for \(name)")
+        }
     }
 
     private func rebuildPromptSubmenu() {
@@ -297,6 +364,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func selectPromptTemplate(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
         activeTemplateName = name
+        Config.saveActivePromptTemplate(name)
         rebuildPromptSubmenu()
         print("Switched prompt template to: \(name)")
     }

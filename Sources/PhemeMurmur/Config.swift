@@ -32,6 +32,7 @@ struct ConfigFile: Decodable {
 
     let prefix: String?
     let promptTemplates: [String: PromptTemplate]?
+    let activePromptTemplate: String?
     let hotkey: String?
     let silenceThreshold: Double?
 
@@ -43,6 +44,7 @@ struct ConfigFile: Decodable {
         case activeProvider = "active-provider"
         case prefix
         case promptTemplates = "prompt-templates"
+        case activePromptTemplate = "active-prompt-template"
         case hotkey
         case silenceThreshold = "silence-threshold"
     }
@@ -105,8 +107,8 @@ enum Config {
     },
     "active-provider": "OpenAI",
 
-    // Hotkey to start/stop recording. Options: right-shift (default), right-option, right-control, right-command, fn
-    // "hotkey": "right-shift",
+    // Hotkey to start/stop recording. Options: right-shift, right-option, right-control, right-command, fn
+    "hotkey": "right-shift",
 
     // Optional: text to prepend before every transcription result
     // "prefix": "",
@@ -120,7 +122,8 @@ enum Config {
     "prompt-templates": {
         "zh_TW": { "language": "zh" },
         "zh_TW-en_US": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }
-    }
+    },
+    "active-prompt-template": "zh_TW"
 }
 """
 
@@ -135,20 +138,97 @@ enum Config {
         print("Edit it and add your OpenAI API key to get started.")
     }
 
-    /// Writes (or updates) the "hotkey" field in config.jsonc, preserving all other content.
-    static func saveHotkey(_ key: HotkeyKey) {
-        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
-        let newEntry = "\"hotkey\": \"\(key.rawValue)\""
+    /// Writes (or updates) the api-key for a provider in config.jsonc, preserving all other content.
+    /// Looks for the provider inside the `providers` dict; falls back to legacy single-key fields
+    /// (`openai-api-key` / `gemini-api-key`) when the modern block is absent.
+    /// Returns true if the file was updated.
+    @discardableResult
+    static func saveAPIKey(providerName: String, apiKey: String) -> Bool {
+        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return false }
 
-        // Replace existing hotkey field if present
-        if let range = content.range(of: #""hotkey"\s*:\s*"[^"]*""#, options: .regularExpression) {
+        // JSON-escape the new key so quotes/backslashes don't break the file.
+        let jsonEscaped = apiKey
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        // Also escape $ and \ for the NSRegularExpression replacement template.
+        let templateKey = NSRegularExpression.escapedTemplate(for: jsonEscaped)
+
+        func replace(pattern: String, in source: inout String) -> Bool {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
+                return false
+            }
+            let range = NSRange(source.startIndex..., in: source)
+            guard regex.firstMatch(in: source, options: [], range: range) != nil else { return false }
+            source = regex.stringByReplacingMatches(
+                in: source,
+                options: [],
+                range: range,
+                withTemplate: "$1\(templateKey)$2"
+            )
+            return true
+        }
+
+        // Try modern `providers` dict first.
+        let escapedName = NSRegularExpression.escapedPattern(for: providerName)
+        let providersPattern = "(\"\(escapedName)\"\\s*:\\s*\\{[^}]*?\"api-key\"\\s*:\\s*\")[^\"]*(\")"
+        if replace(pattern: providersPattern, in: &content) {
+            try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
+            return true
+        }
+
+        // Fallback: legacy top-level single-key fields keyed by provider type.
+        let legacyField: String?
+        switch providerName.lowercased() {
+        case "openai": legacyField = "openai-api-key"
+        case "gemini": legacyField = "gemini-api-key"
+        default: legacyField = nil
+        }
+        if let legacyField {
+            let legacyPattern = "(\"\(legacyField)\"\\s*:\\s*\")[^\"]*(\")"
+            if replace(pattern: legacyPattern, in: &content) {
+                try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /// Writes (or updates) a top-level string field in config.jsonc, preserving all other content.
+    /// Assumes the field exists as a real (uncommented) entry — the default config template
+    /// writes all user-adjustable fields as real entries so this simple regex is sufficient.
+    private static func saveTopLevelStringField(_ fieldName: String, value: String) {
+        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+
+        let jsonEscapedValue = value
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        let newEntry = "\"\(fieldName)\": \"\(jsonEscapedValue)\""
+
+        let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
+        let pattern = "\"\(escapedName)\"\\s*:\\s*\"[^\"]*\""
+        if let range = content.range(of: pattern, options: .regularExpression) {
             content.replaceSubrange(range, with: newEntry)
         } else if let idx = content.firstIndex(of: "{") {
-            // Insert as first field after the opening brace
             content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
         }
 
         try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
+    }
+
+    /// Writes (or updates) the "hotkey" field in config.jsonc, preserving all other content.
+    static func saveHotkey(_ key: HotkeyKey) {
+        saveTopLevelStringField("hotkey", value: key.rawValue)
+    }
+
+    /// Writes (or updates) the "active-provider" field in config.jsonc.
+    static func saveActiveProvider(_ name: String) {
+        saveTopLevelStringField("active-provider", value: name)
+    }
+
+    /// Writes (or updates) the "active-prompt-template" field in config.jsonc.
+    static func saveActivePromptTemplate(_ name: String) {
+        saveTopLevelStringField("active-prompt-template", value: name)
     }
 
     static func loadConfig() -> ConfigFile? {
