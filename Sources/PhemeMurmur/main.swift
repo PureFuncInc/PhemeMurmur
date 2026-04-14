@@ -201,6 +201,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let fileURL = audioRecorder.stopRecording() else {
             state = .idle
             updateStatus("Idle")
+            showErrorIcon()
             print("No audio captured (too short or too quiet).")
             return
         }
