@@ -19,6 +19,12 @@ app: build
 	mkdir -p $(CONTENTS)/Resources
 	cp $(BUILD_DIR)/$(APP_NAME) $(MACOS)/$(APP_NAME)
 	cp Resources/Info.plist $(CONTENTS)/Info.plist
+	@HASH=$$(git rev-parse HEAD 2>/dev/null | tail -c 7 | head -c 6); \
+	if [ -n "$$HASH" ]; then \
+		/usr/libexec/PlistBuddy -c "Delete :GitCommitHash" $(CONTENTS)/Info.plist >/dev/null 2>&1 || true; \
+		/usr/libexec/PlistBuddy -c "Add :GitCommitHash string $$HASH" $(CONTENTS)/Info.plist; \
+		echo "Injected GitCommitHash=$$HASH"; \
+	fi
 	cp Resources/AppIcon.icns $(CONTENTS)/Resources/AppIcon.icns
 	@bash scripts/ensure_signing_cert.sh "$(CERT_NAME)" || true
 	@if security find-certificate -c "$(CERT_NAME)" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1; then \
@@ -32,10 +38,12 @@ run: app
 	open $(APP_BUNDLE)
 
 install: app
+	-pkill -x $(APP_NAME) 2>/dev/null || true
 	rm -rf /Applications/$(APP_BUNDLE)
 	cp -r $(APP_BUNDLE) /Applications/$(APP_BUNDLE)
 	rm -rf $(APP_BUNDLE)
 	rm -f ~/.config/pheme-murmur/.onboarding-done
+	open /Applications/$(APP_BUNDLE)
 
 clean:
 	rm -rf .build $(APP_BUNDLE)

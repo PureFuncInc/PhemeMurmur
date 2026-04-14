@@ -4,7 +4,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
+    private var statusLabel: NSTextField!
     private var modelMenuItem: NSMenuItem!
+    private var modelLabel: NSTextField!
     private var cancelMenuItem: NSMenuItem!
     private var promptMenuItem: NSMenuItem!
     private var promptSubmenu: NSMenu!
@@ -66,11 +68,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         updateIcon()
 
         statusMenu = NSMenu()
-        statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
-        statusMenuItem.isEnabled = false
+        statusMenu.autoenablesItems = false
+
+        statusMenu.addItem(Self.makeHeaderMenuItem())
+        statusMenu.addItem(NSMenuItem.separator())
+
+        let (sItem, sLabel) = Self.makeLabelMenuItem(text: "Status: Idle")
+        statusMenuItem = sItem
+        statusLabel = sLabel
         statusMenu.addItem(statusMenuItem)
-        modelMenuItem = NSMenuItem(title: "Model: —", action: nil, keyEquivalent: "")
-        modelMenuItem.isEnabled = false
+        let (mItem, mLabel) = Self.makeLabelMenuItem(text: "Model: —")
+        modelMenuItem = mItem
+        modelLabel = mLabel
         statusMenu.addItem(modelMenuItem)
         cancelMenuItem = NSMenuItem(title: "Cancel Recording", action: #selector(cancelRecordingFromMenu), keyEquivalent: "")
         cancelMenuItem.isHidden = true
@@ -307,7 +316,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             providerSubmenu.addItem(setKeyItem)
         }
         providerMenuItem?.title = "Provider: \(activeProviderName)"
-        modelMenuItem?.title = activeProvider.map { "Model: \($0.modelName)" } ?? "Model: —"
+        modelLabel?.stringValue = activeProvider.map { "Model: \($0.modelName)" } ?? "Model: —"
     }
 
     @objc private func selectProvider(_ sender: NSMenuItem) {
@@ -449,8 +458,89 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("Hotkey changed to: \(key.displayName)")
     }
 
+    private static func makeHeaderMenuItem() -> NSMenuItem {
+        let headerFont = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
+        let attr = NSMutableAttributedString()
+        attr.append(NSAttributedString(
+            string: "PhemeMurmur",
+            attributes: [
+                .foregroundColor: NSColor.controlAccentColor,
+                .font: headerFont,
+            ]
+        ))
+        if let hash = Bundle.main.object(forInfoDictionaryKey: "GitCommitHash") as? String, !hash.isEmpty {
+            attr.append(NSAttributedString(
+                string: " (\(hash))",
+                attributes: [
+                    .foregroundColor: NSColor.secondaryLabelColor,
+                    .font: headerFont,
+                ]
+            ))
+        }
+
+        let label = NSTextField(labelWithAttributedString: attr)
+        label.isEditable = false
+        label.isSelectable = false
+        label.drawsBackground = false
+        label.isBordered = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        let imageView = NSImageView()
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        if let appIcon = NSApp.applicationIconImage.copy() as? NSImage {
+            appIcon.size = NSSize(width: 16, height: 16)
+            imageView.image = appIcon
+        }
+
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 22))
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(imageView)
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
+            imageView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            imageView.widthAnchor.constraint(equalToConstant: 16),
+            imageView.heightAnchor.constraint(equalToConstant: 16),
+            label.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 6),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            container.heightAnchor.constraint(equalToConstant: 22),
+        ])
+
+        let item = NSMenuItem()
+        item.view = container
+        return item
+    }
+
+    private static func makeLabelMenuItem(text: String) -> (NSMenuItem, NSTextField) {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.menuFont(ofSize: 0)
+        label.textColor = NSColor.labelColor
+        label.isEditable = false
+        label.isSelectable = false
+        label.drawsBackground = false
+        label.isBordered = false
+        label.translatesAutoresizingMaskIntoConstraints = false
+
+        // Match standard menu item horizontal insets (left ~20pt after the
+        // leading area, right ~12pt).
+        let container = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 20))
+        container.translatesAutoresizingMaskIntoConstraints = false
+        container.addSubview(label)
+        NSLayoutConstraint.activate([
+            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
+            label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
+            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
+            container.heightAnchor.constraint(equalToConstant: 20),
+        ])
+
+        let item = NSMenuItem()
+        item.view = container
+        return (item, label)
+    }
+
     private func updateStatus(_ text: String) {
-        statusMenuItem?.title = "Status: \(text)"
+        statusLabel?.stringValue = "Status: \(text)"
         cancelMenuItem?.isHidden = state != .recording
         updateIcon()
     }
