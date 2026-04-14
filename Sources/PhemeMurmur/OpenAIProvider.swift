@@ -6,15 +6,19 @@ struct OpenAIProvider: TranscriptionProvider {
     private static let placeholderKey = "sk-proj-xxx"
 
     let apiKey: String
+    let modelName: String
 
-    var modelName: String { Self.defaultModel }
+    init(apiKey: String, model: String = Self.defaultModel) {
+        self.apiKey = apiKey
+        self.modelName = model
+    }
 
     var isKeyConfigured: Bool {
         !apiKey.isEmpty && apiKey != Self.placeholderKey
     }
 
     func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
-        let model = Self.defaultModel
+        let model = self.modelName
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
 

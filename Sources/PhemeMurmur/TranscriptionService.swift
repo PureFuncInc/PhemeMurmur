@@ -16,12 +16,15 @@ enum TranscriptionError: Error, LocalizedError {
     case fileReadError
     case httpError(Int, String)
     case decodingError
+    case allModelsRateLimited(retryAfter: Int)
 
     var errorDescription: String? {
         switch self {
         case .fileReadError: return "Cannot read audio file"
         case .httpError(let code, let msg): return "API error (\(code)): \(msg)"
         case .decodingError: return "Cannot parse API response"
+        case .allModelsRateLimited(let retryAfter):
+            return "Rate limited, retry in \(retryAfter)s"
         }
     }
 }

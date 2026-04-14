@@ -6,16 +6,19 @@ struct GeminiProvider: TranscriptionProvider {
     private static let placeholderKey = "..."
 
     let apiKey: String
+    let modelName: String
 
-    var modelName: String { Self.defaultModel }
+    init(apiKey: String, model: String = Self.defaultModel) {
+        self.apiKey = apiKey
+        self.modelName = model
+    }
 
     var isKeyConfigured: Bool {
         !apiKey.isEmpty && apiKey != Self.placeholderKey
     }
 
     func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
-        let model = Self.defaultModel
-        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(model):generateContent?key=\(apiKey)")!
+        let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/\(modelName):generateContent?key=\(apiKey)")!
 
         guard let fileData = try? Data(contentsOf: fileURL) else {
             throw TranscriptionError.fileReadError

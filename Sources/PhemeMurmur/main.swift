@@ -107,12 +107,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         if let config = Config.loadConfig() {
             let entries = config.resolvedProviders
             for (name, entry) in entries {
-                switch entry.type {
-                case .openai:
-                    providers[name] = OpenAIProvider(apiKey: entry.apiKey)
-                case .gemini:
-                    providers[name] = GeminiProvider(apiKey: entry.apiKey)
-                }
+                providers[name] = Self.makeProvider(for: entry)
             }
             if let active = config.resolvedActiveProvider, providers[active] != nil {
                 activeProviderName = active
@@ -283,6 +278,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     PasteService.pasteText(output)
                     self.state = .idle
                     self.updateStatus("Idle")
+                    self.refreshModelLabel()
                 }
             } catch {
                 await MainActor.run {
@@ -290,6 +286,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.state = .idle
                     self.updateStatus("Error: \(error.localizedDescription)")
                     self.showErrorIcon()
+                    self.refreshModelLabel()
                 }
             }
 
@@ -316,6 +313,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             providerSubmenu.addItem(setKeyItem)
         }
         providerMenuItem?.title = "Provider: \(activeProviderName)"
+        refreshModelLabel()
+    }
+
+    private func refreshModelLabel() {
         modelLabel?.stringValue = activeProvider.map { "Model: \($0.modelName)" } ?? "Model: —"
     }
 
@@ -406,12 +407,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let config = Config.loadConfig() else { return }
         providers.removeAll()
         for (n, entry) in config.resolvedProviders {
-            switch entry.type {
-            case .openai:
-                providers[n] = OpenAIProvider(apiKey: entry.apiKey)
-            case .gemini:
-                providers[n] = GeminiProvider(apiKey: entry.apiKey)
-            }
+            providers[n] = Self.makeProvider(for: entry)
         }
         if providers[activeProviderName] == nil {
             activeProviderName = providers.keys.sorted().first ?? ""
@@ -510,6 +506,20 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let item = NSMenuItem()
         item.view = container
         return item
+    }
+
+    private static func makeProvider(for entry: ProviderEntry) -> TranscriptionProvider {
+        let chain = entry.type.fallbackChain
+        switch entry.type {
+        case .openai:
+            return FallbackProvider(chain: chain) { model in
+                OpenAIProvider(apiKey: entry.apiKey, model: model)
+            }
+        case .gemini:
+            return FallbackProvider(chain: chain) { model in
+                GeminiProvider(apiKey: entry.apiKey, model: model)
+            }
+        }
     }
 
     private static func makeLabelMenuItem(text: String) -> (NSMenuItem, NSTextField) {

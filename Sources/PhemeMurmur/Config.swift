@@ -10,6 +10,23 @@ enum ProviderType: String, Decodable {
     case gemini
 }
 
+extension ProviderType {
+    /// Hard-coded ordered list of model names to try for this provider.
+    /// Intended for automatic fallback when the primary model returns HTTP 429.
+    var fallbackChain: [String] {
+        switch self {
+        case .gemini:
+            return [
+                GeminiProvider.defaultModel,
+                "gemini-2.5-flash",
+                "gemini-2.0-flash-lite",
+            ]
+        case .openai:
+            return [OpenAIProvider.defaultModel]
+        }
+    }
+}
+
 struct ProviderEntry: Decodable {
     let type: ProviderType
     let apiKey: String
