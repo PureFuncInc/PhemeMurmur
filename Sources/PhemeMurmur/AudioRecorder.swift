@@ -76,6 +76,25 @@ final class AudioRecorder {
             return nil
         }
 
+        // Check audio energy (RMS) to skip silent/background-noise recordings
+        var sumOfSquares: Double = 0
+        var rmsFrameCount: Int = 0
+        for buffer in captured {
+            guard let channelData = buffer.floatChannelData?[0] else { continue }
+            let frameLength = Int(buffer.frameLength)
+            rmsFrameCount += frameLength
+            for i in 0..<frameLength {
+                let sample = Double(channelData[i])
+                sumOfSquares += sample * sample
+            }
+        }
+        let rms = rmsFrameCount > 0 ? sqrt(sumOfSquares / Double(rmsFrameCount)) : 0
+        print("Recording RMS energy: \(String(format: "%.4f", rms))")
+        if rms < Config.silenceThreshold {
+            print("Recording too quiet (RMS \(String(format: "%.4f", rms)) < \(Config.silenceThreshold)), skipping.")
+            return nil
+        }
+
         // Write WAV
         let outputURL = FileManager.default.temporaryDirectory
             .appendingPathComponent("phememurmur_recording.wav")

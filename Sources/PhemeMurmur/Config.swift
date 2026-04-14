@@ -77,9 +77,15 @@ struct ConfigFile: Decodable {
 }
 
 enum Config {
+    /// Audio sample rate in Hz (16 kHz, required by Whisper)
     static let sampleRate: Double = 16000
+    /// Number of audio channels (mono)
     static let channels: UInt32 = 1
+    /// Minimum recording duration in seconds; shorter recordings are discarded
     static let minDuration: Double = 0.5
+    /// RMS energy threshold (0.0–1.0) below which a recording is considered silent (~-34 dBFS)
+    static let silenceThreshold: Double = 0.02
+    /// Minimum interval in seconds between hotkey toggles to prevent accidental double-taps
     static let debounceInterval: Double = 0.4
 
     static let defaultPromptTemplateName = "zh_TW"
