@@ -103,7 +103,7 @@ enum Config {
     },
     "active-provider": "OpenAI",
 
-    // Hotkey to start/stop recording. Options: right-shift (default), right-option, right-control
+    // Hotkey to start/stop recording. Options: right-shift (default), right-option, right-control, etc.
     // "hotkey": "right-shift",
 
     // Optional: text to prepend before every transcription result
