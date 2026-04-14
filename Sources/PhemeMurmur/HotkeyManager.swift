@@ -4,22 +4,22 @@ import Foundation
 import os
 
 enum HotkeyKey: String, CaseIterable {
-    case rightOption  = "right-option"
-    case leftOption   = "left-option"
-    case leftControl  = "left-control"
-    case rightControl = "right-control"
     case fn           = "fn"
+    case leftControl  = "left-control"
+    case leftOption   = "left-option"
     case rightCommand = "right-command"
+    case rightOption  = "right-option"
+    case rightControl = "right-control"
     case rightShift   = "right-shift"
 
     var keyCode: Int64 {
         switch self {
-        case .rightOption:  return 0x3D
-        case .leftOption:   return 0x3A
-        case .leftControl:  return 0x3B
-        case .rightControl: return 0x3E
         case .fn:           return 0x3F
+        case .leftControl:  return 0x3B
+        case .leftOption:   return 0x3A
         case .rightCommand: return 0x36
+        case .rightOption:  return 0x3D
+        case .rightControl: return 0x3E
         case .rightShift:   return 0x3C
         }
     }
@@ -27,12 +27,12 @@ enum HotkeyKey: String, CaseIterable {
     /// Short name used in the parent menu item title (e.g. "Hotkey: Right Shift")
     var shortName: String {
         switch self {
-        case .rightOption:  return "Right Option"
-        case .leftOption:   return "Left Option"
-        case .leftControl:  return "Left Control"
-        case .rightControl: return "Right Control"
         case .fn:           return "Fn"
+        case .leftControl:  return "Left Control"
+        case .leftOption:   return "Left Option"
         case .rightCommand: return "Right Command"
+        case .rightOption:  return "Right Option"
+        case .rightControl: return "Right Control"
         case .rightShift:   return "Right Shift"
         }
     }
@@ -40,24 +40,24 @@ enum HotkeyKey: String, CaseIterable {
     /// Full display name with macOS symbol shown in submenu items
     var displayName: String {
         switch self {
-        case .rightOption:  return "Right Option (⌥)"
-        case .leftOption:   return "Left Option (⌥)"
-        case .leftControl:  return "Left Control (^)"
-        case .rightControl: return "Right Control (^)"
         case .fn:           return "Fn"
+        case .leftControl:  return "Left Control (^)"
+        case .leftOption:   return "Left Option (⌥)"
         case .rightCommand: return "Right Command (⌘)"
+        case .rightOption:  return "Right Option (⌥)"
+        case .rightControl: return "Right Control (^)"
         case .rightShift:   return "Right Shift (⇧)"
         }
     }
 
     private var requiredFlag: CGEventFlags {
         switch self {
-        case .rightOption:  return .maskAlternate
-        case .leftOption:   return .maskAlternate
-        case .leftControl:  return .maskControl
-        case .rightControl: return .maskControl
         case .fn:           return .maskSecondaryFn
+        case .leftControl:  return .maskControl
+        case .leftOption:   return .maskAlternate
         case .rightCommand: return .maskCommand
+        case .rightOption:  return .maskAlternate
+        case .rightControl: return .maskControl
         case .rightShift:   return .maskShift
         }
     }

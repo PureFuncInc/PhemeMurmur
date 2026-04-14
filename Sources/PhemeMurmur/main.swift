@@ -288,8 +288,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func rebuildHotkeySubmenu() {
         hotkeySubmenu.removeAllItems()
-        let options: [HotkeyKey] = [.rightOption, .leftOption, .leftControl, .rightControl, .fn, .rightCommand, .rightShift]
-        for key in options {
+        for key in HotkeyKey.allCases {
             let item = NSMenuItem(title: key.displayName, action: #selector(selectHotkey(_:)), keyEquivalent: "")
             item.representedObject = key.rawValue
             item.state = (key == currentHotkey) ? .on : .off
