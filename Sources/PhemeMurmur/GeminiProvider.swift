@@ -41,6 +41,7 @@ struct GeminiProvider: TranscriptionProvider {
         } else {
             instructions = "Transcribe this audio in \(languageLabel). The speaker primarily speaks Chinese, with English nouns, verbs, and technical terms mixed in. Preserve English words as-is without translating them into Chinese. Output ONLY the exact transcription text, nothing else."
         }
+        instructions += "\n\nIf the audio contains no discernible speech or is silent, return exactly the string __SILENCE__ and nothing else."
 
         let body: [String: Any] = [
             "contents": [[

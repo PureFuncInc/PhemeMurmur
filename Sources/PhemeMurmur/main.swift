@@ -273,6 +273,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
                 let finalText = try await provider.transcribe(fileURL: fileURL, language: template?.language, prompt: template?.prompt)
                 await MainActor.run {
+                    if finalText == "__SILENCE__" {
+                        print("Silence detected by model, skipping paste.")
+                        self.state = .idle
+                        self.updateStatus("Idle")
+                        self.refreshModelLabel()
+                        return
+                    }
                     let output = (self.prefix ?? "") + finalText
                     print(">>> \(output)")
                     PasteService.pasteText(output)

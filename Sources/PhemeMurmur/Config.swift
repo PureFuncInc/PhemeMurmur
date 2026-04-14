@@ -104,8 +104,9 @@ enum Config {
     static let channels: UInt32 = 1
     /// Minimum recording duration in seconds; shorter recordings are discarded
     static let minDuration: Double = 0.5
-    /// RMS energy threshold (0.0–1.0) below which a recording is considered silent; configurable via "silence-threshold"
-    static var silenceThreshold: Double = 0.005
+    /// RMS energy threshold (0.0–1.0) below which a recording is considered silent; configurable via "silence-threshold".
+    /// Set to 0 to disable silence detection entirely.
+    static var silenceThreshold: Double = 0.0005
     /// Minimum interval in seconds between hotkey toggles to prevent accidental double-taps
     static let debounceInterval: Double = 0.4
 
