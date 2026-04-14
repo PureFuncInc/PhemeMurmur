@@ -38,15 +38,8 @@ struct ProviderEntry: Decodable {
 }
 
 struct ConfigFile: Decodable {
-    // Legacy single-key fields
-    let openaiApiKey: String?
-    let geminiApiKey: String?
-    let provider: ProviderType?
-
-    // Multi-provider support
     let providers: [String: ProviderEntry]?
     let activeProvider: String?
-
     let prefix: String?
     let promptTemplates: [String: PromptTemplate]?
     let activePromptTemplate: String?
@@ -54,9 +47,6 @@ struct ConfigFile: Decodable {
     let silenceThreshold: Double?
 
     enum CodingKeys: String, CodingKey {
-        case openaiApiKey = "openai-api-key"
-        case geminiApiKey = "gemini-api-key"
-        case provider
         case providers
         case activeProvider = "active-provider"
         case prefix
@@ -71,25 +61,14 @@ struct ConfigFile: Decodable {
         return k
     }
 
-    /// Builds the full provider map — from `providers` dict, or falling back to legacy single-key fields.
+    /// Builds the full provider map from the `providers` dict.
     var resolvedProviders: [String: ProviderEntry] {
-        if let providers, !providers.isEmpty { return providers }
-        // Fallback: build from legacy single-key fields
-        var result: [String: ProviderEntry] = [:]
-        if let key = openaiApiKey {
-            result["openai"] = ProviderEntry(type: .openai, apiKey: key)
-        }
-        if let key = geminiApiKey {
-            result["gemini"] = ProviderEntry(type: .gemini, apiKey: key)
-        }
-        return result
+        providers ?? [:]
     }
 
     /// Resolves the default active provider name.
     var resolvedActiveProvider: String? {
         if let activeProvider { return activeProvider }
-        // Legacy: use explicit provider field
-        if let provider { return provider.rawValue }
         let resolved = resolvedProviders
         if resolved.count == 1 { return resolved.keys.first }
         // Default to first sorted key
@@ -120,9 +99,9 @@ enum Config {
 {
     "providers": {
         "OpenAI": { "type": "openai", "api-key": "sk-proj-xxx" },
-        "Gemini": { "type": "gemini", "api-key": "..." }
+        "Gemini": { "type": "gemini", "api-key": "AIzaxxx" }
     },
-    "active-provider": "OpenAI",
+    "active-provider": "Gemini",
 
     // Hotkey to start/stop recording. Options: right-shift, right-option, right-control, right-command, fn
     "hotkey": "right-shift",
@@ -152,12 +131,11 @@ enum Config {
         try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
         try? defaultConfigContent.write(toFile: configPath, atomically: true, encoding: .utf8)
         print("Created default config at \(configPath)")
-        print("Edit it and add your OpenAI API key to get started.")
+        print("Edit it and add your provider API keys to get started.")
     }
 
     /// Writes (or updates) the api-key for a provider in config.jsonc, preserving all other content.
-    /// Looks for the provider inside the `providers` dict; falls back to legacy single-key fields
-    /// (`openai-api-key` / `gemini-api-key`) when the modern block is absent.
+    /// Looks for the provider inside the `providers` dict.
     /// Returns true if the file was updated.
     @discardableResult
     static func saveAPIKey(providerName: String, apiKey: String) -> Bool {
@@ -191,21 +169,6 @@ enum Config {
         if replace(pattern: providersPattern, in: &content) {
             try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
             return true
-        }
-
-        // Fallback: legacy top-level single-key fields keyed by provider type.
-        let legacyField: String?
-        switch providerName.lowercased() {
-        case "openai": legacyField = "openai-api-key"
-        case "gemini": legacyField = "gemini-api-key"
-        default: legacyField = nil
-        }
-        if let legacyField {
-            let legacyPattern = "(\"\(legacyField)\"\\s*:\\s*\")[^\"]*(\")"
-            if replace(pattern: legacyPattern, in: &content) {
-                try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
-                return true
-            }
         }
 
         return false
