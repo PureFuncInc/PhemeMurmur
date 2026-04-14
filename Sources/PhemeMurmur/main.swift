@@ -4,6 +4,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
+    private var modelMenuItem: NSMenuItem!
     private var cancelMenuItem: NSMenuItem!
     private var promptMenuItem: NSMenuItem!
     private var promptSubmenu: NSMenu!
@@ -68,6 +69,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenuItem = NSMenuItem(title: "Status: Idle", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         statusMenu.addItem(statusMenuItem)
+        modelMenuItem = NSMenuItem(title: "Model: —", action: nil, keyEquivalent: "")
+        modelMenuItem.isEnabled = false
+        statusMenu.addItem(modelMenuItem)
         cancelMenuItem = NSMenuItem(title: "Cancel Recording", action: #selector(cancelRecordingFromMenu), keyEquivalent: "")
         cancelMenuItem.isHidden = true
         statusMenu.addItem(cancelMenuItem)
@@ -297,30 +301,68 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             providerSubmenu.addItem(NSMenuItem.separator())
             let setKeyItem = NSMenuItem(
                 title: "Set API Key for \(activeProviderName)…",
-                action: #selector(promptForAPIKey),
+                action: #selector(setAPIKeyForActive),
                 keyEquivalent: ""
             )
             providerSubmenu.addItem(setKeyItem)
         }
         providerMenuItem?.title = "Provider: \(activeProviderName)"
+        modelMenuItem?.title = activeProvider.map { "Model: \($0.modelName)" } ?? "Model: —"
     }
 
     @objc private func selectProvider(_ sender: NSMenuItem) {
         guard let name = sender.representedObject as? String else { return }
+        if let provider = providers[name], !provider.isKeyConfigured {
+            // Warn the user and offer to enter a key. Only switch if the key is saved.
+            let saved = runAPIKeyPrompt(
+                for: name,
+                messageText: "API key not set for \(name)",
+                informativeText: "Enter an API key to start using \(name).",
+                style: .warning
+            )
+            guard saved else {
+                // Restore the checkmark on the current active provider.
+                rebuildProviderSubmenu()
+                return
+            }
+        }
+        activateProvider(name)
+    }
+
+    private func activateProvider(_ name: String) {
         activeProviderName = name
         Config.saveActiveProvider(name)
         rebuildProviderSubmenu()
+        if state == .idle {
+            updateStatus("Idle")
+        }
         print("Switched provider to: \(name)")
     }
 
-    @objc private func promptForAPIKey() {
+    @objc private func setAPIKeyForActive() {
         let name = activeProviderName
         guard !name.isEmpty else { return }
+        _ = runAPIKeyPrompt(
+            for: name,
+            messageText: "Set API Key for \(name)",
+            informativeText: "The key will be saved to config.jsonc.",
+            style: .informational
+        )
+    }
 
+    /// Shows an API-key input alert for `name`, writes the key to config.jsonc on Save, and reloads
+    /// the provider instance so the new key takes effect immediately. Returns true iff a key was saved.
+    @discardableResult
+    private func runAPIKeyPrompt(
+        for name: String,
+        messageText: String,
+        informativeText: String,
+        style: NSAlert.Style
+    ) -> Bool {
         let alert = NSAlert()
-        alert.messageText = "Set API Key for \(name)"
-        alert.informativeText = "The key will be saved to config.jsonc."
-        alert.alertStyle = .informational
+        alert.messageText = messageText
+        alert.informativeText = informativeText
+        alert.alertStyle = style
         alert.addButton(withTitle: "Save")
         alert.addButton(withTitle: "Cancel")
 
@@ -331,10 +373,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         NSApp.activate(ignoringOtherApps: true)
         let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else { return }
+        guard response == .alertFirstButtonReturn else { return false }
 
         let newKey = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !newKey.isEmpty else { return }
+        guard !newKey.isEmpty else { return false }
 
         if !Config.saveAPIKey(providerName: name, apiKey: newKey) {
             let err = NSAlert()
@@ -342,28 +384,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             err.informativeText = "Could not locate provider \"\(name)\" in config.jsonc. Please edit the file manually."
             err.alertStyle = .warning
             err.runModal()
-            return
+            return false
         }
 
-        // Reload provider instances from the updated config.
-        if let config = Config.loadConfig() {
-            providers.removeAll()
-            for (n, entry) in config.resolvedProviders {
-                switch entry.type {
-                case .openai:
-                    providers[n] = OpenAIProvider(apiKey: entry.apiKey)
-                case .gemini:
-                    providers[n] = GeminiProvider(apiKey: entry.apiKey)
-                }
+        reloadProvidersFromConfig()
+        rebuildProviderSubmenu()
+        print("Updated API key for \(name)")
+        return true
+    }
+
+    private func reloadProvidersFromConfig() {
+        guard let config = Config.loadConfig() else { return }
+        providers.removeAll()
+        for (n, entry) in config.resolvedProviders {
+            switch entry.type {
+            case .openai:
+                providers[n] = OpenAIProvider(apiKey: entry.apiKey)
+            case .gemini:
+                providers[n] = GeminiProvider(apiKey: entry.apiKey)
             }
-            if providers[activeProviderName] == nil {
-                activeProviderName = providers.keys.sorted().first ?? ""
-            }
-            rebuildProviderSubmenu()
-            if state == .idle && !providers.isEmpty {
-                updateStatus("Idle")
-            }
-            print("Updated API key for \(name)")
+        }
+        if providers[activeProviderName] == nil {
+            activeProviderName = providers.keys.sorted().first ?? ""
         }
     }
 

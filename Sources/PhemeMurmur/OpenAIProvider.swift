@@ -2,8 +2,16 @@ import Foundation
 
 struct OpenAIProvider: TranscriptionProvider {
     static let defaultModel = "gpt-4o-mini-transcribe-2025-12-15"
+    /// Placeholder written by Config.defaultConfigContent for a fresh install.
+    private static let placeholderKey = "sk-proj-xxx"
 
     let apiKey: String
+
+    var modelName: String { Self.defaultModel }
+
+    var isKeyConfigured: Bool {
+        !apiKey.isEmpty && apiKey != Self.placeholderKey
+    }
 
     func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
         let model = Self.defaultModel

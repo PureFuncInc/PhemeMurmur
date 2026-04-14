@@ -2,8 +2,16 @@ import Foundation
 
 struct GeminiProvider: TranscriptionProvider {
     static let defaultModel = "gemini-3.1-flash-lite-preview"
+    /// Placeholder written by Config.defaultConfigContent for a fresh install.
+    private static let placeholderKey = "..."
 
     let apiKey: String
+
+    var modelName: String { Self.defaultModel }
+
+    var isKeyConfigured: Bool {
+        !apiKey.isEmpty && apiKey != Self.placeholderKey
+    }
 
     func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
         let model = Self.defaultModel
