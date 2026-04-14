@@ -104,9 +104,8 @@ enum Config {
     static let channels: UInt32 = 1
     /// Minimum recording duration in seconds; shorter recordings are discarded
     static let minDuration: Double = 0.5
-    /// RMS energy threshold (0.0–1.0) below which a recording is considered silent; configurable via "silence-threshold".
-    /// Set to 0 to disable silence detection entirely.
-    static var silenceThreshold: Double = 0.0005
+    /// RMS energy threshold (0.0–1.0) below which a recording is considered silent; configurable via "silence-threshold". Default is 0 (disabled). Set a positive value to enable, e.g.: 0.003
+    static var silenceThreshold: Double = 0
     /// Minimum interval in seconds between hotkey toggles to prevent accidental double-taps
     static let debounceInterval: Double = 0.4
 
@@ -131,8 +130,8 @@ enum Config {
     // Optional: text to prepend before every transcription result
     // "prefix": "",
 
-    // Optional: RMS energy threshold (0.0–1.0) for silence detection. Recordings below this are discarded (default: 0.005)
-    // "silence-threshold": 0.005,
+    // Optional: RMS energy threshold (0.0–1.0) for silence detection. Recordings below this are discarded. Default is 0 (disabled). Set a positive value to enable, e.g.: 0.003
+    // "silence-threshold": 0.003,
 
     // Prompt templates — switchable from the menu bar.
     //   "language": input audio language (ISO-639-1), helps transcription accuracy

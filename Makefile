@@ -38,7 +38,7 @@ run: app
 	open $(APP_BUNDLE)
 
 install: app
-	-pkill -x $(APP_NAME) 2>/dev/null || true
+	pkill -x $(APP_NAME) 2>/dev/null || true
 	rm -rf /Applications/$(APP_BUNDLE)
 	cp -r $(APP_BUNDLE) /Applications/$(APP_BUNDLE)
 	rm -rf $(APP_BUNDLE)
@@ -47,3 +47,4 @@ install: app
 
 clean:
 	rm -rf .build $(APP_BUNDLE)
+
