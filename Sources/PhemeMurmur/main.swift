@@ -182,6 +182,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         state = .idle
         updateStatus("Idle")
+        NSSound(named: "Funk")?.play()
         print("⛔ Recording cancelled.")
     }
 
