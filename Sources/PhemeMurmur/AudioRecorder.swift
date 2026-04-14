@@ -56,7 +56,7 @@ final class AudioRecorder {
         isRecording = true
     }
 
-    func stopRecording() -> URL? {
+    func stopRecording() -> StopResult {
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
         isRecording = false
@@ -66,14 +66,14 @@ final class AudioRecorder {
         buffers.removeAll()
         lock.unlock()
 
-        guard !captured.isEmpty else { return nil }
+        guard !captured.isEmpty else { return .noAudio }
 
         // Check total duration
         let totalFrames = captured.reduce(0) { $0 + Int($1.frameLength) }
         let duration = Double(totalFrames) / Config.sampleRate
         if duration < Config.minDuration {
             print("Recording too short (\(String(format: "%.1f", duration))s), skipping.")
-            return nil
+            return .tooShort(duration)
         }
 
         // Check audio energy (RMS) to skip silent/background-noise recordings
@@ -92,7 +92,7 @@ final class AudioRecorder {
         print("Recording RMS energy: \(String(format: "%.4f", rms))")
         if rms < Config.silenceThreshold {
             print("Recording too quiet (RMS \(String(format: "%.4f", rms)) < \(Config.silenceThreshold)), skipping.")
-            return nil
+            return .tooQuiet(rms)
         }
 
         // Write WAV
@@ -114,11 +114,18 @@ final class AudioRecorder {
                 try audioFile.write(from: buffer)
             }
             print("Saved recording: \(outputURL.path) (\(String(format: "%.1f", duration))s)")
-            return outputURL
+            return .success(outputURL)
         } catch {
             print("Failed to write WAV: \(error)")
-            return nil
+            return .noAudio
         }
+    }
+
+    enum StopResult {
+        case success(URL)
+        case noAudio
+        case tooShort(Double)
+        case tooQuiet(Double)
     }
 
     enum RecorderError: Error {

@@ -33,6 +33,7 @@ struct ConfigFile: Decodable {
     let prefix: String?
     let promptTemplates: [String: PromptTemplate]?
     let hotkey: String?
+    let silenceThreshold: Double?
 
     enum CodingKeys: String, CodingKey {
         case openaiApiKey = "openai-api-key"
@@ -43,6 +44,7 @@ struct ConfigFile: Decodable {
         case prefix
         case promptTemplates = "prompt-templates"
         case hotkey
+        case silenceThreshold = "silence-threshold"
     }
 
     var resolvedHotkey: HotkeyKey {
@@ -83,8 +85,8 @@ enum Config {
     static let channels: UInt32 = 1
     /// Minimum recording duration in seconds; shorter recordings are discarded
     static let minDuration: Double = 0.5
-    /// RMS energy threshold (0.0–1.0) below which a recording is considered silent (~-34 dBFS)
-    static let silenceThreshold: Double = 0.02
+    /// RMS energy threshold (0.0–1.0) below which a recording is considered silent; configurable via "silence-threshold"
+    static var silenceThreshold: Double = 0.005
     /// Minimum interval in seconds between hotkey toggles to prevent accidental double-taps
     static let debounceInterval: Double = 0.4
 
@@ -108,6 +110,9 @@ enum Config {
 
     // Optional: text to prepend before every transcription result
     // "prefix": "",
+
+    // Optional: RMS energy threshold (0.0–1.0) for silence detection. Recordings below this are discarded (default: 0.005)
+    // "silence-threshold": 0.005,
 
     // Prompt templates — switchable from the menu bar.
     //   "language": input audio language (ISO-639-1), helps transcription accuracy

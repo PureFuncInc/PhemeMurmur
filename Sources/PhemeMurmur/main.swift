@@ -96,6 +96,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 print("Active provider: \(activeProviderName)")
             }
             prefix = config.prefix
+            if let threshold = config.silenceThreshold {
+                Config.silenceThreshold = threshold
+            }
             currentHotkey = config.resolvedHotkey
             hotkeyManager.key = currentHotkey
             promptTemplates = config.promptTemplates ?? [:]
@@ -145,7 +148,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard state == .recording else { return }
 
         // Stop recording and discard the audio
-        if let fileURL = audioRecorder.stopRecording() {
+        if case .success(let fileURL) = audioRecorder.stopRecording() {
             try? FileManager.default.removeItem(at: fileURL)
         }
 
@@ -198,11 +201,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func stopRecordingAndTranscribe() {
-        guard let fileURL = audioRecorder.stopRecording() else {
+        let result = audioRecorder.stopRecording()
+        let fileURL: URL
+        switch result {
+        case .success(let url):
+            fileURL = url
+        case .noAudio:
             state = .idle
             updateStatus("Idle")
+            print("No audio captured.")
+            return
+        case .tooShort(let duration):
+            state = .idle
+            updateStatus("Too short (\(String(format: "%.1f", duration))s)")
             showErrorIcon()
-            print("No audio captured (too short or too quiet).")
+            print("Recording too short (\(String(format: "%.1f", duration))s).")
+            return
+        case .tooQuiet(let rms):
+            state = .idle
+            updateStatus("Too quiet (RMS \(String(format: "%.3f", rms)))")
+            showErrorIcon()
+            print("Recording too quiet (RMS \(String(format: "%.4f", rms))).")
             return
         }
 
