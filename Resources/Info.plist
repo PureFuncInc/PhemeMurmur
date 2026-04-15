@@ -4,8 +4,6 @@
 <dict>
     <key>CFBundleIdentifier</key>
     <string>com.purefuncinc.PhemeMurmur</string>
-    <key>CFBundleName</key>
-    <string>PhemeMurmur</string>
     <key>CFBundleExecutable</key>
     <string>PhemeMurmur</string>
     <key>CFBundleVersion</key>
