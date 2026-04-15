@@ -29,7 +29,7 @@ func renderEmoji(_ emoji: String, size: Int) -> Data? {
 
     guard let cgImage = ctx.makeImage() else { return nil }
     let bitmapRep = NSBitmapImageRep(cgImage: cgImage)
-    return bitmapRep.representation(using: .png, properties: [:])
+    return bitmapRep.representation(using: .png, properties: [.compressionFactor: 1.0])
 }
 
 let emoji = "🗣️"

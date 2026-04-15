@@ -27,9 +27,11 @@ make clean && make install
 
 On first launch, a guided onboarding walks you through:
 
-1. Grant **Microphone** access (system prompt)
-2. Grant **Accessibility** access (System Settings > Privacy & Security > Accessibility)
-3. Add your API key to the config file
+1. Grant **Accessibility** access (System Settings > Privacy & Security > Accessibility)
+2. Set up your API key via the **Provider** menu in the menu bar
+3. Grant **Microphone** access (system prompt)
+
+## Configuration
 
 The config file is created automatically at:
 
