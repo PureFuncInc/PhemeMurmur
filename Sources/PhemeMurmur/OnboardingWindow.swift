@@ -42,7 +42,7 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         Page(
             emoji: "🔑",
             title: "設定 API Key",
-            body: "PhemeMurmur 支援 OpenAI 與 Gemini 兩種語音轉文字服務。\n\n請點擊選單列中的「Open Config Folder」，\n在 config.jsonc 填入對應的 API Key。\n\n您可以透過「active-provider」設定預設啟用的服務，\n也能隨時在選單列的「Provider」選單中切換。"
+            body: "PhemeMurmur 支援 OpenAI 與 Gemini 兩種語音轉文字服務。\n\n請點擊選單列中的「Provider」選單，\n選擇要使用的服務後開啟設定視窗並填入 API Key。\n\n設定完成後，您也能隨時在選單列的「Provider」選單中切換服務。"
         )
     ]
 
