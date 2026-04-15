@@ -20,6 +20,7 @@ app: build
 	cp $(BUILD_DIR)/$(APP_NAME) $(MACOS)/$(APP_NAME)
 	cp Resources/Info.plist $(CONTENTS)/Info.plist
 	@HASH=$$(git rev-parse HEAD 2>/dev/null | tail -c 7 | head -c 6); \
+	@HASH=$$(git rev-parse --short=7 HEAD 2>/dev/null); \
 	if [ -n "$$HASH" ]; then \
 		/usr/libexec/PlistBuddy -c "Delete :GitCommitHash" $(CONTENTS)/Info.plist >/dev/null 2>&1 || true; \
 		/usr/libexec/PlistBuddy -c "Add :GitCommitHash string $$HASH" $(CONTENTS)/Info.plist; \
