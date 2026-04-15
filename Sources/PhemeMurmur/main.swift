@@ -473,8 +473,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             ]
         ))
         let hash = Bundle.main.object(forInfoDictionaryKey: "GitCommitHash") as? String ?? ""
+        let date = Bundle.main.object(forInfoDictionaryKey: "GitCommitDate") as? String ?? ""
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
-        let buildInfo = [hash, version].filter { !$0.isEmpty }.joined(separator: ",")
+        let buildInfo = [hash, date, version].filter { !$0.isEmpty }.joined(separator: ",")
         if !buildInfo.isEmpty {
             attr.append(NSAttributedString(
                 string: " (\(buildInfo))",
