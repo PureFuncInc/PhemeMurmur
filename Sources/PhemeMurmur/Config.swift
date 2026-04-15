@@ -45,6 +45,7 @@ struct ConfigFile: Decodable {
     let activePromptTemplate: String?
     let hotkey: String?
     let silenceThreshold: Double?
+    let providerTimingLogEnabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case providers
@@ -54,6 +55,7 @@ struct ConfigFile: Decodable {
         case activePromptTemplate = "active-prompt-template"
         case hotkey
         case silenceThreshold = "silence-threshold"
+        case providerTimingLogEnabled = "provider-timing-log-enabled"
     }
 
     var resolvedHotkey: HotkeyKey {
@@ -85,6 +87,8 @@ enum Config {
     static let minDuration: Double = 0.5
     /// RMS energy threshold (0.0–1.0) below which a recording is considered silent; configurable via "silence-threshold". Default is 0 (disabled). Set a positive value to enable, e.g.: 0.003
     static var silenceThreshold: Double = 0
+    /// Disabled by default. Can be enabled explicitly via "provider-timing-log-enabled" in config.jsonc.
+    static var providerTimingLogEnabled: Bool = false
     /// Minimum interval in seconds between hotkey toggles to prevent accidental double-taps
     static let debounceInterval: Double = 0.4
 

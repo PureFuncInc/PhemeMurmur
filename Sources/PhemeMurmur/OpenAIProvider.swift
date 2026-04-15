@@ -51,12 +51,67 @@ struct OpenAIProvider: TranscriptionProvider {
 
         request.httpBody = body
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try TranscriptionService.checkHTTPResponse(response, data: data)
+        let startedAt = Date()
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            MetricsLogger.appendProviderTiming(
+                provider: "openai",
+                model: model,
+                operation: "transcribe",
+                audioBytes: fileData.count,
+                elapsedMs: elapsedMs,
+                status: "transport_error",
+                error: error.localizedDescription
+            )
+            throw error
+        }
+
+        let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+        let httpStatus = (response as? HTTPURLResponse)?.statusCode
+
+        do {
+            try TranscriptionService.checkHTTPResponse(response, data: data)
+        } catch {
+            MetricsLogger.appendProviderTiming(
+                provider: "openai",
+                model: model,
+                operation: "transcribe",
+                audioBytes: fileData.count,
+                elapsedMs: elapsedMs,
+                status: "http_error",
+                httpStatus: httpStatus,
+                error: error.localizedDescription
+            )
+            throw error
+        }
 
         guard let result = try? JSONDecoder().decode(TranscriptionResponse.self, from: data) else {
+            MetricsLogger.appendProviderTiming(
+                provider: "openai",
+                model: model,
+                operation: "transcribe",
+                audioBytes: fileData.count,
+                elapsedMs: elapsedMs,
+                status: "decode_error",
+                httpStatus: httpStatus
+            )
             throw TranscriptionError.decodingError
         }
+
+        MetricsLogger.appendProviderTiming(
+            provider: "openai",
+            model: model,
+            operation: "transcribe",
+            audioBytes: fileData.count,
+            elapsedMs: elapsedMs,
+            status: "ok",
+            httpStatus: httpStatus
+        )
 
         var text = result.text
 
@@ -83,15 +138,72 @@ struct OpenAIProvider: TranscriptionProvider {
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let (data, response) = try await URLSession.shared.data(for: request)
-        try TranscriptionService.checkHTTPResponse(response, data: data)
+        let startedAt = Date()
+        let model = "gpt-5-nano"
+        let textBytes = text.lengthOfBytes(using: .utf8)
+
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await URLSession.shared.data(for: request)
+        } catch {
+            let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+            MetricsLogger.appendProviderTiming(
+                provider: "openai",
+                model: model,
+                operation: "post_process",
+                audioBytes: textBytes,
+                elapsedMs: elapsedMs,
+                status: "transport_error",
+                error: error.localizedDescription
+            )
+            throw error
+        }
+
+        let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
+        let httpStatus = (response as? HTTPURLResponse)?.statusCode
+
+        do {
+            try TranscriptionService.checkHTTPResponse(response, data: data)
+        } catch {
+            MetricsLogger.appendProviderTiming(
+                provider: "openai",
+                model: model,
+                operation: "post_process",
+                audioBytes: textBytes,
+                elapsedMs: elapsedMs,
+                status: "http_error",
+                httpStatus: httpStatus,
+                error: error.localizedDescription
+            )
+            throw error
+        }
 
         guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let choices = json["choices"] as? [[String: Any]],
               let message = choices.first?["message"] as? [String: Any],
               let content = message["content"] as? String else {
+            MetricsLogger.appendProviderTiming(
+                provider: "openai",
+                model: model,
+                operation: "post_process",
+                audioBytes: textBytes,
+                elapsedMs: elapsedMs,
+                status: "decode_error",
+                httpStatus: httpStatus
+            )
             throw TranscriptionError.decodingError
         }
+
+        MetricsLogger.appendProviderTiming(
+            provider: "openai",
+            model: model,
+            operation: "post_process",
+            audioBytes: textBytes,
+            elapsedMs: elapsedMs,
+            status: "ok",
+            httpStatus: httpStatus
+        )
 
         return content.trimmingCharacters(in: .whitespacesAndNewlines)
     }

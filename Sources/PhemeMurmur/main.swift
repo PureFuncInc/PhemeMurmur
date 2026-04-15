@@ -123,6 +123,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let threshold = config.silenceThreshold {
                 Config.silenceThreshold = threshold
             }
+            Config.providerTimingLogEnabled = config.providerTimingLogEnabled ?? false
             currentHotkey = config.resolvedHotkey
             hotkeyManager.key = currentHotkey
             promptTemplates = config.promptTemplates ?? [:]
