@@ -4,8 +4,11 @@ APP_BUNDLE = $(APP_NAME).app
 CONTENTS  = $(APP_BUNDLE)/Contents
 MACOS     = $(CONTENTS)/MacOS
 CERT_NAME = PhemeMurmurDev
+DIST_DIR  = dist
+ARCH      = $(shell uname -m)
+ZIP_NAME  = $(APP_NAME)-macOS-$(ARCH).zip
 
-.PHONY: build app run clean icon install
+.PHONY: build app run clean icon install dist
 
 build:
 	swift build -c release
@@ -56,6 +59,11 @@ install: app
 	rm -f ~/.config/pheme-murmur/.onboarding-done
 	open /Applications/$(APP_BUNDLE)
 
-clean:
-	rm -rf .build $(APP_BUNDLE)
+dist: app
+	rm -rf $(DIST_DIR)
+	mkdir -p $(DIST_DIR)
+	ditto -c -k --sequesterRsrc --keepParent $(APP_BUNDLE) $(DIST_DIR)/$(ZIP_NAME)
+	@echo "Created $(DIST_DIR)/$(ZIP_NAME)"
 
+clean:
+	rm -rf .build $(APP_BUNDLE) $(DIST_DIR)
