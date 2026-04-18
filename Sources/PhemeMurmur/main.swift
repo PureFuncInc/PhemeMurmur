@@ -4,9 +4,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
-    private var statusLabel: NSTextField!
-    private var modelMenuItem: NSMenuItem!
-    private var modelLabel: NSTextField!
     private var cancelMenuItem: NSMenuItem!
     private var promptMenuItem: NSMenuItem!
     private var promptSubmenu: NSMenu!
@@ -70,36 +67,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu = NSMenu()
         statusMenu.autoenablesItems = false
 
-        statusMenu.addItem(Self.makeHeaderMenuItem())
+        statusMenu.addItem(Self.makeMenuItem(
+            title: "About PhemeMurmur",
+            systemImage: "info.circle",
+            action: #selector(showAboutPanel)
+        ))
         statusMenu.addItem(NSMenuItem.separator())
 
-        let (sItem, sLabel) = Self.makeLabelMenuItem(text: "Status: Idle")
-        statusMenuItem = sItem
-        statusLabel = sLabel
+        statusMenuItem = Self.makeMenuItem(title: "Status: Idle", systemImage: "waveform")
         statusMenu.addItem(statusMenuItem)
-        let (mItem, mLabel) = Self.makeLabelMenuItem(text: "Model: —")
-        modelMenuItem = mItem
-        modelLabel = mLabel
-        statusMenu.addItem(modelMenuItem)
-        cancelMenuItem = NSMenuItem(title: "Cancel Recording", action: #selector(cancelRecordingFromMenu), keyEquivalent: "")
+
+        cancelMenuItem = Self.makeMenuItem(
+            title: "Cancel Recording",
+            systemImage: "stop.circle",
+            action: #selector(cancelRecordingFromMenu)
+        )
         cancelMenuItem.isHidden = true
         statusMenu.addItem(cancelMenuItem)
+
         statusMenu.addItem(NSMenuItem.separator())
+
         providerSubmenu = NSMenu()
-        providerMenuItem = NSMenuItem(title: "Provider", action: nil, keyEquivalent: "")
+        providerMenuItem = Self.makeMenuItem(title: "Provider", systemImage: "cloud")
         statusMenu.addItem(providerMenuItem)
         statusMenu.setSubmenu(providerSubmenu, for: providerMenuItem)
+
         promptSubmenu = NSMenu()
-        promptMenuItem = NSMenuItem(title: "Prompt", action: nil, keyEquivalent: "")
+        promptMenuItem = Self.makeMenuItem(title: "Prompt", systemImage: "text.bubble")
         statusMenu.addItem(promptMenuItem)
         statusMenu.setSubmenu(promptSubmenu, for: promptMenuItem)
+
         hotkeySubmenu = NSMenu()
-        hotkeyMenuItem = NSMenuItem(title: "Hotkey", action: nil, keyEquivalent: "")
+        hotkeyMenuItem = Self.makeMenuItem(title: "Hotkey", systemImage: "keyboard")
         statusMenu.addItem(hotkeyMenuItem)
         statusMenu.setSubmenu(hotkeySubmenu, for: hotkeyMenuItem)
+
         statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(NSMenuItem(title: "Open Config Folder", action: #selector(openConfigFolder), keyEquivalent: ""))
-        statusMenu.addItem(NSMenuItem(title: "Quit", action: #selector(quitApp), keyEquivalent: "q"))
+        statusMenu.addItem(Self.makeMenuItem(
+            title: "Open Config Folder",
+            systemImage: "folder",
+            action: #selector(openConfigFolder)
+        ))
+        statusMenu.addItem(Self.makeMenuItem(
+            title: "Quit",
+            systemImage: "power",
+            action: #selector(quitApp),
+            keyEquivalent: "q"
+        ))
         statusItem.menu = statusMenu
 
         // Load config
@@ -278,7 +292,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                         print("Silence detected by model, skipping paste.")
                         self.state = .idle
                         self.updateStatus("Idle")
-                        self.refreshModelLabel()
+                        self.refreshProviderLabel()
                         return
                     }
                     let output = (self.prefix ?? "") + finalText
@@ -286,7 +300,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     PasteService.pasteText(output)
                     self.state = .idle
                     self.updateStatus("Idle")
-                    self.refreshModelLabel()
+                    self.refreshProviderLabel()
                 }
             } catch {
                 await MainActor.run {
@@ -294,7 +308,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     self.state = .idle
                     self.updateStatus("Error: \(error.localizedDescription)")
                     self.showErrorIcon()
-                    self.refreshModelLabel()
+                    self.refreshProviderLabel()
                 }
             }
 
@@ -320,12 +334,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             )
             providerSubmenu.addItem(setKeyItem)
         }
-        providerMenuItem?.title = "Provider: \(activeProviderName)"
-        refreshModelLabel()
+        refreshProviderLabel()
     }
 
-    private func refreshModelLabel() {
-        modelLabel?.stringValue = activeProvider.map { "Model: \($0.modelName)" } ?? "Model: —"
+    private func refreshProviderLabel() {
+        if let provider = activeProvider {
+            providerMenuItem?.title = "Provider: \(activeProviderName) (\(provider.modelName))"
+        } else {
+            providerMenuItem?.title = "Provider"
+        }
     }
 
     @objc private func selectProvider(_ sender: NSMenuItem) {
@@ -462,62 +479,18 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("Hotkey changed to: \(key.displayName)")
     }
 
-    private static func makeHeaderMenuItem() -> NSMenuItem {
-        let headerFont = NSFont.boldSystemFont(ofSize: NSFont.systemFontSize)
-        let attr = NSMutableAttributedString()
-        attr.append(NSAttributedString(
-            string: "PhemeMurmur",
-            attributes: [
-                .foregroundColor: NSColor.controlAccentColor,
-                .font: headerFont,
-            ]
-        ))
+    @objc private func showAboutPanel() {
         let hash = Bundle.main.object(forInfoDictionaryKey: "GitCommitHash") as? String ?? ""
         let date = Bundle.main.object(forInfoDictionaryKey: "GitCommitDate") as? String ?? ""
-        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? ""
-        let buildInfo = [hash, date, version].filter { !$0.isEmpty }.joined(separator: ",")
-        if !buildInfo.isEmpty {
-            attr.append(NSAttributedString(
-                string: " (\(buildInfo))",
-                attributes: [
-                    .foregroundColor: NSColor.secondaryLabelColor,
-                    .font: headerFont,
-                ]
-            ))
+
+        var options: [NSApplication.AboutPanelOptionKey: Any] = [:]
+        let detail = [hash, date].filter { !$0.isEmpty }.joined(separator: ",")
+        if !detail.isEmpty {
+            options[.applicationVersion] = detail
         }
 
-        let label = NSTextField(labelWithAttributedString: attr)
-        label.isEditable = false
-        label.isSelectable = false
-        label.drawsBackground = false
-        label.isBordered = false
-        label.translatesAutoresizingMaskIntoConstraints = false
-
-        let imageView = NSImageView()
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        if let appIcon = NSApp.applicationIconImage.copy() as? NSImage {
-            appIcon.size = NSSize(width: 16, height: 16)
-            imageView.image = appIcon
-        }
-
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 240, height: 22))
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(imageView)
-        container.addSubview(label)
-        NSLayoutConstraint.activate([
-            imageView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 14),
-            imageView.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            imageView.widthAnchor.constraint(equalToConstant: 16),
-            imageView.heightAnchor.constraint(equalToConstant: 16),
-            label.leadingAnchor.constraint(equalTo: imageView.trailingAnchor, constant: 6),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
-            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            container.heightAnchor.constraint(equalToConstant: 22),
-        ])
-
-        let item = NSMenuItem()
-        item.view = container
-        return item
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
     private static func makeProvider(for entry: ProviderEntry) -> TranscriptionProvider {
@@ -534,35 +507,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    private static func makeLabelMenuItem(text: String) -> (NSMenuItem, NSTextField) {
-        let label = NSTextField(labelWithString: text)
-        label.font = NSFont.menuFont(ofSize: 0)
-        label.textColor = NSColor.labelColor
-        label.isEditable = false
-        label.isSelectable = false
-        label.drawsBackground = false
-        label.isBordered = false
-        label.translatesAutoresizingMaskIntoConstraints = false
-
-        // Match standard menu item horizontal insets (left ~20pt after the
-        // leading area, right ~12pt).
-        let container = NSView(frame: NSRect(x: 0, y: 0, width: 220, height: 20))
-        container.translatesAutoresizingMaskIntoConstraints = false
-        container.addSubview(label)
-        NSLayoutConstraint.activate([
-            label.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 20),
-            label.trailingAnchor.constraint(lessThanOrEqualTo: container.trailingAnchor, constant: -12),
-            label.centerYAnchor.constraint(equalTo: container.centerYAnchor),
-            container.heightAnchor.constraint(equalToConstant: 20),
-        ])
-
-        let item = NSMenuItem()
-        item.view = container
-        return (item, label)
+    private static func makeMenuItem(
+        title: String,
+        systemImage: String,
+        action: Selector? = nil,
+        keyEquivalent: String = ""
+    ) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
+        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        item.image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)?
+            .withSymbolConfiguration(config)
+        return item
     }
 
     private func updateStatus(_ text: String) {
-        statusLabel?.stringValue = "Status: \(text)"
+        statusMenuItem?.title = "Status: \(text)"
         cancelMenuItem?.isHidden = state != .recording
         updateIcon()
     }

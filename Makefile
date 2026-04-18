@@ -25,7 +25,7 @@ app: build
 		/usr/libexec/PlistBuddy -c "Add :GitCommitHash string $$HASH" $(CONTENTS)/Info.plist; \
 		echo "Injected GitCommitHash=$$HASH"; \
 	fi; \
-	DATE=$$(git log -1 --format=%cd --date=format:'%y%m%d' 2>/dev/null); \
+	DATE=$$(git log -1 --format=%cd --date=format:'%Y%m%d' 2>/dev/null); \
 	if [ -n "$$DATE" ]; then \
 		/usr/libexec/PlistBuddy -c "Delete :GitCommitDate" $(CONTENTS)/Info.plist >/dev/null 2>&1 || true; \
 		/usr/libexec/PlistBuddy -c "Add :GitCommitDate string $$DATE" $(CONTENTS)/Info.plist; \
