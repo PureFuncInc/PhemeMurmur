@@ -350,10 +350,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshProviderLabel() {
         if let provider = activeProvider {
-            providerMenuItem?.title = "Provider: \(activeProviderName) (\(provider.modelName))"
+            let model = Self.displayModelName(provider.modelName)
+            providerMenuItem?.title = "Provider: \(activeProviderName) (\(model))"
         } else {
             providerMenuItem?.title = "Provider"
         }
+    }
+
+    private static func displayModelName(_ model: String) -> String {
+        if let range = model.range(of: "-transcribe") {
+            return String(model[..<range.lowerBound])
+        }
+        if model.hasSuffix("-preview") {
+            return String(model.dropLast("-preview".count))
+        }
+        return model
     }
 
     @objc private func selectProvider(_ sender: NSMenuItem) {
