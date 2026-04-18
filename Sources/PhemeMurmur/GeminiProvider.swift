@@ -64,42 +64,17 @@ struct GeminiProvider: TranscriptionProvider {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
-        let startedAt = Date()
-
         let data: Data
         let response: URLResponse
         do {
             (data, response) = try await URLSession.shared.data(for: request)
         } catch {
-            let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-            MetricsLogger.appendProviderTiming(
-                provider: "gemini",
-                model: modelName,
-                operation: "transcribe",
-                audioBytes: fileData.count,
-                elapsedMs: elapsedMs,
-                status: "transport_error",
-                error: error.localizedDescription
-            )
             throw error
         }
-
-        let elapsedMs = Int(Date().timeIntervalSince(startedAt) * 1000)
-        let httpStatus = (response as? HTTPURLResponse)?.statusCode
 
         do {
             try TranscriptionService.checkHTTPResponse(response, data: data)
         } catch {
-            MetricsLogger.appendProviderTiming(
-                provider: "gemini",
-                model: modelName,
-                operation: "transcribe",
-                audioBytes: fileData.count,
-                elapsedMs: elapsedMs,
-                status: "http_error",
-                httpStatus: httpStatus,
-                error: error.localizedDescription
-            )
             throw error
         }
 
@@ -108,27 +83,8 @@ struct GeminiProvider: TranscriptionProvider {
               let content = candidates.first?["content"] as? [String: Any],
               let parts = content["parts"] as? [[String: Any]],
               let text = parts.first?["text"] as? String else {
-            MetricsLogger.appendProviderTiming(
-                provider: "gemini",
-                model: modelName,
-                operation: "transcribe",
-                audioBytes: fileData.count,
-                elapsedMs: elapsedMs,
-                status: "decode_error",
-                httpStatus: httpStatus
-            )
             throw TranscriptionError.decodingError
         }
-
-        MetricsLogger.appendProviderTiming(
-            provider: "gemini",
-            model: modelName,
-            operation: "transcribe",
-            audioBytes: fileData.count,
-            elapsedMs: elapsedMs,
-            status: "ok",
-            httpStatus: httpStatus
-        )
 
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
     }
