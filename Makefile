@@ -8,7 +8,7 @@ DIST_DIR  = dist
 ARCH      = $(shell uname -m)
 ZIP_NAME  = $(APP_NAME)-macOS-$(ARCH).zip
 
-.PHONY: build app run clean icon install dist
+.PHONY: build app run clean icon install
 
 build:
 	swift build -c release
@@ -55,15 +55,13 @@ install: app
 	pkill -x $(APP_NAME) 2>/dev/null || true
 	rm -rf /Applications/$(APP_BUNDLE)
 	cp -r $(APP_BUNDLE) /Applications/$(APP_BUNDLE)
-	rm -rf $(APP_BUNDLE)
-	rm -f ~/.config/pheme-murmur/.onboarding-done
-	open /Applications/$(APP_BUNDLE)
-
-dist: app
 	rm -rf $(DIST_DIR)
 	mkdir -p $(DIST_DIR)
 	ditto -c -k --sequesterRsrc --keepParent $(APP_BUNDLE) $(DIST_DIR)/$(ZIP_NAME)
 	@echo "Created $(DIST_DIR)/$(ZIP_NAME)"
+	rm -rf $(APP_BUNDLE)
+	rm -f ~/.config/pheme-murmur/.onboarding-done
+	open /Applications/$(APP_BUNDLE)
 
 clean:
 	rm -rf .build $(APP_BUNDLE) $(DIST_DIR)
