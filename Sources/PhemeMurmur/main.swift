@@ -1,16 +1,18 @@
 import AppKit
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
-    private var cancelMenuItem: NSMenuItem!
     private var promptMenuItem: NSMenuItem!
     private var promptSubmenu: NSMenu!
     private var providerMenuItem: NSMenuItem!
     private var providerSubmenu: NSMenu!
     private var hotkeyMenuItem: NSMenuItem!
     private var hotkeySubmenu: NSMenu!
+    private var configLogsMenuItem: NSMenuItem!
+    private var configLogsSubmenu: NSMenu!
+    private var showErrorLogMenuItem: NSMenuItem!
     private var currentHotkey: HotkeyKey = .rightShift
 
     private let hotkeyManager = HotkeyManager()
@@ -75,15 +77,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.addItem(NSMenuItem.separator())
 
         statusMenuItem = Self.makeMenuItem(title: "Status: Idle", systemImage: "waveform")
+        statusMenuItem.isEnabled = false
         statusMenu.addItem(statusMenuItem)
-
-        cancelMenuItem = Self.makeMenuItem(
-            title: "Cancel Recording",
-            systemImage: "stop.circle",
-            action: #selector(cancelRecordingFromMenu)
-        )
-        cancelMenuItem.isHidden = true
-        statusMenu.addItem(cancelMenuItem)
 
         statusMenu.addItem(NSMenuItem.separator())
 
@@ -103,17 +98,32 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusMenu.setSubmenu(hotkeySubmenu, for: hotkeyMenuItem)
 
         statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(Self.makeMenuItem(
+
+        configLogsSubmenu = NSMenu()
+        configLogsMenuItem = Self.makeMenuItem(title: "Config & Logs", systemImage: "folder")
+        statusMenu.addItem(configLogsMenuItem)
+        statusMenu.setSubmenu(configLogsSubmenu, for: configLogsMenuItem)
+
+        configLogsSubmenu.addItem(Self.makeMenuItem(
             title: "Open Config Folder",
             systemImage: "folder",
             action: #selector(openConfigFolder)
         ))
+
+        showErrorLogMenuItem = Self.makeMenuItem(
+            title: "Show Error Log",
+            systemImage: "doc.text.magnifyingglass",
+            action: #selector(revealErrorLog)
+        )
+        configLogsSubmenu.addItem(showErrorLogMenuItem)
+
         statusMenu.addItem(Self.makeMenuItem(
             title: "Quit",
             systemImage: "power",
             action: #selector(quitApp),
             keyEquivalent: "q"
         ))
+        statusMenu.delegate = self
         statusItem.menu = statusMenu
 
         // Load config
@@ -127,7 +137,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
             if providers.isEmpty {
                 print("Error: No API key configured in \(Config.configPath)")
-                updateStatus("Error: No API key")
+                ErrorLog.append(context: "config-missing-api-key", message: "No API key configured in \(Config.configPath)")
+                updateStatus("Error: \(Self.truncate("No API key"))")
                 showErrorIcon(persistent: true)
             } else {
                 print("Providers: \(providers.keys.sorted().joined(separator: ", "))")
@@ -146,7 +157,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         } else {
             print("Error: Failed to parse \(Config.configPath)")
-            updateStatus("Error: Invalid config syntax")
+            ErrorLog.append(context: "config-parse", message: "Failed to parse \(Config.configPath)")
+            updateStatus("Error: \(Self.truncate("Invalid config syntax"))")
             showErrorIcon(persistent: true)
         }
         rebuildProviderSubmenu()
@@ -200,16 +212,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         print("⛔ Recording cancelled.")
     }
 
-    @objc private func cancelRecordingFromMenu() {
-        handleCancel()
-    }
-
     private func startHotkeyMonitor() {
         if hotkeyManager.start() {
             print("Hotkey monitor active.")
         } else {
             print("Failed to create event tap. Grant Accessibility permission and restart.")
-            updateStatus("Error: Need Accessibility permission")
+            ErrorLog.append(context: "accessibility", message: "Failed to create event tap. Grant Accessibility permission and restart.")
+            updateStatus("Error: \(Self.truncate("Need Accessibility permission"))")
             showErrorIcon(persistent: true)
         }
     }
@@ -238,7 +247,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             print("🎙 Recording... Press Right Shift to stop, Esc to cancel.")
         } catch {
             print("Failed to start recording: \(error)")
-            updateStatus("Error: \(error.localizedDescription)")
+            ErrorLog.append(context: "recording-start", message: "\(error)")
+            updateStatus("Error: \(Self.truncate(error.localizedDescription))")
             showErrorIcon()
         }
     }
@@ -272,7 +282,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         guard let provider = activeProvider else {
             state = .idle
-            updateStatus("Error: No API key")
+            ErrorLog.append(context: "transcribe-no-provider", message: "No active provider configured")
+            updateStatus("Error: \(Self.truncate("No API key"))")
             showErrorIcon(persistent: true)
             print("Cannot transcribe: No active provider configured.")
             return
@@ -305,8 +316,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } catch {
                 await MainActor.run {
                     print("Transcription failed: \(error)")
+                    ErrorLog.append(context: "transcribe", message: "\(error)")
                     self.state = .idle
-                    self.updateStatus("Error: \(error.localizedDescription)")
+                    self.updateStatus("Error: \(Self.truncate(error.localizedDescription))")
                     self.showErrorIcon()
                     self.refreshProviderLabel()
                 }
@@ -522,8 +534,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func updateStatus(_ text: String) {
         statusMenuItem?.title = "Status: \(text)"
-        cancelMenuItem?.isHidden = state != .recording
         updateIcon()
+    }
+
+    private static func truncate(_ message: String, limit: Int = 60) -> String {
+        let flattened = message
+            .replacingOccurrences(of: "\n", with: " ")
+            .replacingOccurrences(of: "\r", with: " ")
+        guard flattened.count > limit else { return flattened }
+        let idx = flattened.index(flattened.startIndex, offsetBy: limit - 1)
+        return flattened[..<idx] + "…"
     }
 
     private func updateIcon() {
@@ -572,6 +592,17 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func openConfigFolder() {
         let url = URL(fileURLWithPath: (Config.configPath as NSString).deletingLastPathComponent)
         NSWorkspace.shared.open(url)
+    }
+
+    @objc private func revealErrorLog() {
+        let url = URL(fileURLWithPath: ErrorLog.logPath)
+        NSWorkspace.shared.activateFileViewerSelecting([url])
+    }
+
+    func menuWillOpen(_ menu: NSMenu) {
+        guard menu === statusMenu else { return }
+        let hasLog = FileManager.default.fileExists(atPath: ErrorLog.logPath)
+        showErrorLogMenuItem?.isEnabled = hasLog
     }
 
     @objc private func quitApp() {
