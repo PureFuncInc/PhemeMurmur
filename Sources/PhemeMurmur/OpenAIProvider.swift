@@ -71,6 +71,18 @@ struct OpenAIProvider: TranscriptionProvider {
 
         var text = result.text
 
+        // OpenAI's transcription API accepts ISO-639-1 "zh" only and sometimes
+        // returns Simplified Chinese characters. Force Hans→Hant via Apple's
+        // ICU transform so the output matches the menu's "Traditional Chinese"
+        // label. Character-level only; ambiguous mappings (干→乾/幹, 后→後/后)
+        // are left as-is.
+        if language == "zh", let converted = text.applyingTransform(
+            StringTransform(rawValue: "Hans-Hant"),
+            reverse: false
+        ) {
+            text = converted
+        }
+
         if let prompt {
             text = try await postProcess(text: text, instruction: prompt)
         }
