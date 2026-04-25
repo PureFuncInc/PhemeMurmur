@@ -99,4 +99,41 @@ final class VoiceCommandProcessorTests: XCTestCase {
             )
         }
     }
+
+    func testConsecutiveNewlineTriggersStack() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("A 換行 換行 B"),
+            "A\n\nB"
+        )
+    }
+
+    func testMixedTriggersInOneInput() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process(
+                "標題，分隔線，第一點，A，空行，結尾"
+            ),
+            "標題\n\n---\n\n\n1. A\n\n結尾"
+        )
+    }
+
+    func testTriggerWithoutBoundaryCharsStillMatches() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("a換行b"),
+            "a\nb"
+        )
+    }
+
+    func testHalfWidthPeriodAbsorbed() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("結束.換行.繼續"),
+            "結束\n繼續"
+        )
+    }
+
+    func testFullWidthIdeographicSpaceAbsorbed() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("前面\u{3000}換行\u{3000}後面"),
+            "前面\n後面"
+        )
+    }
 }
