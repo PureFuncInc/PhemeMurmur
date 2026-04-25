@@ -45,6 +45,7 @@ struct ConfigFile: Decodable {
     let activePromptTemplate: String?
     let hotkey: String?
     let silenceThreshold: Double?
+    let voiceCommands: Bool?
 
     enum CodingKeys: String, CodingKey {
         case providers
@@ -54,6 +55,7 @@ struct ConfigFile: Decodable {
         case activePromptTemplate = "active-prompt-template"
         case hotkey
         case silenceThreshold = "silence-threshold"
+        case voiceCommands = "voice-commands"
     }
 
     var resolvedHotkey: HotkeyKey {
@@ -73,6 +75,11 @@ struct ConfigFile: Decodable {
         if resolved.count == 1 { return resolved.keys.first }
         // Default to first sorted key
         return resolved.keys.sorted().first
+    }
+
+    /// Defaults to false: feature must be explicitly opted into.
+    var resolvedVoiceCommands: Bool {
+        voiceCommands ?? false
     }
 }
 
@@ -111,6 +118,12 @@ enum Config {
 
     // Optional: RMS energy threshold (0.0–1.0) for silence detection. Recordings below this are discarded. Default is 0 (disabled). Set a positive value to enable, e.g.: 0.003
     // "silence-threshold": 0.003,
+
+    // Optional: enable local voice-command post-processing. When true,
+    // saying 換行 / 空行 / 分隔線 / 第一點…第十點 inserts the corresponding
+    // formatting in the transcription before paste. Skipped when the
+    // active prompt template has a "prompt" field. Default: false.
+    // "voice-commands": true,
 
     // Prompt templates — switchable from the menu bar.
     //   "language": input audio language (ISO-639-1), helps transcription accuracy
