@@ -60,4 +60,43 @@ final class VoiceCommandProcessorTests: XCTestCase {
             "標題\n\n---\n\n內容"
         )
     }
+
+    func testFirstPointProducesOneDotSpace() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("第一點，要先處理 A"),
+            "\n1. 要先處理 A"
+        )
+    }
+
+    func testTenthPointProducesTwoDigitOutput() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("第十點，是 J"),
+            "\n10. 是 J"
+        )
+    }
+
+    func testNumberedPointsSequence() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process(
+                "重點，第一點，A，第二點，B，第三點，C"
+            ),
+            "重點\n1. A\n2. B\n3. C"
+        )
+    }
+
+    func testAllNumberedPointsCovered() {
+        let triggers = [
+            ("第一點", "\n1. "), ("第二點", "\n2. "), ("第三點", "\n3. "),
+            ("第四點", "\n4. "), ("第五點", "\n5. "), ("第六點", "\n6. "),
+            ("第七點", "\n7. "), ("第八點", "\n8. "), ("第九點", "\n9. "),
+            ("第十點", "\n10. "),
+        ]
+        for (trigger, expected) in triggers {
+            XCTAssertEqual(
+                VoiceCommandProcessor.process(trigger),
+                expected,
+                "Trigger \(trigger) should produce \(expected.debugDescription)"
+            )
+        }
+    }
 }

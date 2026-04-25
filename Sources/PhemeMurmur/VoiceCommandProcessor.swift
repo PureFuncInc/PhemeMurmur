@@ -7,7 +7,18 @@ enum VoiceCommandProcessor {
         ("分隔線", "\n\n---\n\n"),
     ]
 
-    private static let numberedPoints: [(trigger: String, output: String)] = []
+    private static let numberedPoints: [(trigger: String, output: String)] = [
+        ("第一點", "\n1. "),
+        ("第二點", "\n2. "),
+        ("第三點", "\n3. "),
+        ("第四點", "\n4. "),
+        ("第五點", "\n5. "),
+        ("第六點", "\n6. "),
+        ("第七點", "\n7. "),
+        ("第八點", "\n8. "),
+        ("第九點", "\n9. "),
+        ("第十點", "\n10. "),
+    ]
 
     private static let boundaryClass = "[ \\t\\u3000，。、,.]*"
 
