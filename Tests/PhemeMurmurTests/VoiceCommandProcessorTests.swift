@@ -46,4 +46,18 @@ final class VoiceCommandProcessorTests: XCTestCase {
             "你好\n"
         )
     }
+
+    func testBlankLineProducesDoubleNewline() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("段落一，空行，段落二"),
+            "段落一\n\n段落二"
+        )
+    }
+
+    func testSeparatorProducesMarkdownRule() {
+        XCTAssertEqual(
+            VoiceCommandProcessor.process("標題，分隔線，內容"),
+            "標題\n\n---\n\n內容"
+        )
+    }
 }
