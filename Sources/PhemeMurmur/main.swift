@@ -21,6 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var providers: [String: TranscriptionProvider] = [:]
     private var activeProviderName: String = ""
     private var prefix: String?
+    private var voiceCommandsEnabled: Bool = false
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
     private var accessibilityPollTimer: Timer?
@@ -145,6 +146,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 print("Active provider: \(activeProviderName)")
             }
             prefix = config.prefix
+            voiceCommandsEnabled = config.resolvedVoiceCommands
             if let threshold = config.silenceThreshold {
                 Config.silenceThreshold = threshold
             }
@@ -305,7 +307,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         self.refreshProviderLabel()
                         return
                     }
-                    let output = (self.prefix ?? "") + finalText
+                    let processed: String
+                    if self.voiceCommandsEnabled, template?.prompt == nil {
+                        processed = VoiceCommandProcessor.process(finalText)
+                    } else {
+                        processed = finalText
+                    }
+                    let output = (self.prefix ?? "") + processed
                     print(">>> \(output)")
                     PasteService.pasteText(output)
                     self.state = .idle
