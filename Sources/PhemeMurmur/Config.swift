@@ -119,12 +119,6 @@ enum Config {
     // Optional: RMS energy threshold (0.0–1.0) for silence detection. Recordings below this are discarded. Default is 0 (disabled). Set a positive value to enable, e.g.: 0.003
     // "silence-threshold": 0.003,
 
-    // Optional: enable local voice-command post-processing. When true,
-    // saying 換行 / 空行 / 分隔線 / 第一點…第十點 inserts the corresponding
-    // formatting in the transcription before paste. Skipped when the
-    // active prompt template has a "prompt" field. Default: false.
-    // "voice-commands": true,
-
     // Prompt templates — switchable from the menu bar.
     //   "language": input audio language (ISO-639-1), helps transcription accuracy
     //   "prompt": if set, sends transcribed text through LLM for post-processing
@@ -132,7 +126,13 @@ enum Config {
         "zh_TW": { "language": "zh" },
         "zh_TW-en_US": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }
     },
-    "active-prompt-template": "zh_TW"
+    "active-prompt-template": "zh_TW",
+
+    // Set to true to enable local voice-command post-processing. When on,
+    // saying 換行 / 空行 / 分隔線 / 第一點…第十點 inserts the corresponding
+    // formatting in the transcription before paste. Skipped when the
+    // active prompt template has a "prompt" field.
+    "voice-commands": false
 }
 """
 
