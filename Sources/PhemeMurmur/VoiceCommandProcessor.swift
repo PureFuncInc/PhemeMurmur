@@ -2,8 +2,8 @@ import Foundation
 
 enum VoiceCommandProcessor {
     private static let staticReplacements: [(trigger: String, output: String)] = [
-        ("換行", "\n"),
-        ("空行", "\n\n"),
+        ("換一行", "\n"),
+        ("空一行", "\n\n"),
         ("分隔線", "\n\n---\n\n"),
     ]
 
