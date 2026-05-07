@@ -13,11 +13,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var configLogsMenuItem: NSMenuItem!
     private var configLogsSubmenu: NSMenu!
     private var showErrorLogMenuItem: NSMenuItem!
+    private var launchAtLoginItem: NSMenuItem!
     private var currentHotkey: HotkeyKey = .rightShift
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
     private let onboarding = OnboardingWindow()
+    private let launchAtLogin = LaunchAtLogin()
     private var providers: [String: TranscriptionProvider] = [:]
     private var activeProviderName: String = ""
     private var prefix: String?
@@ -118,6 +120,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         )
         configLogsSubmenu.addItem(showErrorLogMenuItem)
 
+        statusMenu.addItem(NSMenuItem.separator())
+
+        launchAtLoginItem = NSMenuItem(
+            title: "Launch at Login",
+            action: #selector(toggleLaunchAtLogin),
+            keyEquivalent: ""
+        )
+        statusMenu.addItem(launchAtLoginItem)
+
+        statusMenu.addItem(NSMenuItem.separator())
+
         statusMenu.addItem(Self.makeMenuItem(
             title: "Quit",
             systemImage: "power",
@@ -126,6 +139,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         ))
         statusMenu.delegate = self
         statusItem.menu = statusMenu
+
+        launchAtLogin.onStateChange = { [weak self] state in
+            self?.setLaunchAtLogin(state: state)
+        }
+        setLaunchAtLogin(state: launchAtLogin.state)
 
         // Load config
         if let config = Config.loadConfig() {
@@ -550,6 +568,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
+    private static func enabledImage() -> NSImage? {
+        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGreen])
+        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        return NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Enabled")?
+            .withSymbolConfiguration(size.applying(palette))
+    }
+
+    private static func infoImage() -> NSImage? {
+        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGray])
+        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        return NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Needs attention")?
+            .withSymbolConfiguration(size.applying(palette))
+    }
+
+    private func setLaunchAtLogin(state: LaunchAtLoginState) {
+        // Always render via image; never use NSMenuItem.state to avoid stacking the
+        // macOS-native checkmark on top of our green check.
+        launchAtLoginItem.state = .off
+        switch state {
+        case .enabled:
+            launchAtLoginItem.image = Self.enabledImage()
+            launchAtLoginItem.toolTip = nil
+        case .disabled:
+            launchAtLoginItem.image = nil
+            launchAtLoginItem.toolTip = nil
+        case .requiresApproval:
+            launchAtLoginItem.image = Self.infoImage()
+            launchAtLoginItem.toolTip = "Approve in System Settings → General → Login Items"
+        case .failed(let msg):
+            launchAtLoginItem.image = Self.infoImage()
+            launchAtLoginItem.toolTip = msg
+        }
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        launchAtLogin.handleClick()
+    }
+
     private func updateStatus(_ text: String) {
         statusMenuItem?.title = "Status: \(text)"
         updateIcon()
@@ -621,6 +677,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard menu === statusMenu else { return }
         let hasLog = FileManager.default.fileExists(atPath: ErrorLog.logPath)
         showErrorLogMenuItem?.isEnabled = hasLog
+        launchAtLogin.refresh()
     }
 
     @objc private func quitApp() {
