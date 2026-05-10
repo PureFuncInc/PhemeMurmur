@@ -27,13 +27,25 @@ extension ProviderType {
     }
 }
 
+struct PostProcessConfig: Decodable {
+    let baseURL: String?
+    let model: String?
+
+    enum CodingKeys: String, CodingKey {
+        case baseURL = "base-url"
+        case model
+    }
+}
+
 struct ProviderEntry: Decodable {
     let type: ProviderType
     let apiKey: String
+    let postProcess: PostProcessConfig?
 
     enum CodingKeys: String, CodingKey {
         case type
         case apiKey = "api-key"
+        case postProcess = "post-process"
     }
 }
 
@@ -105,7 +117,17 @@ enum Config {
     static let defaultConfigContent = """
 {
     "providers": {
-        "OpenAI": { "type": "openai", "api-key": "sk-proj-xxx" },
+        "OpenAI": {
+            "type": "openai",
+            "api-key": "sk-proj-xxx"
+            // Optional: route post-processing (chat completions) to an
+            // OpenAI-compatible endpoint such as a local LM Studio server.
+            // Defaults to OpenAI (https://api.openai.com/v1, gpt-5-nano).
+            // "post-process": {
+            //     "base-url": "http://localhost:1234/v1",
+            //     "model": "openai/gpt-oss-20b"
+            // }
+        },
         "Gemini": { "type": "gemini", "api-key": "AIzaxxx" }
     },
     "active-provider": "Gemini",

@@ -545,8 +545,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let chain = entry.type.fallbackChain
         switch entry.type {
         case .openai:
+            let postProcessBaseURL = entry.postProcess?.baseURL ?? OpenAIProvider.defaultPostProcessBaseURL
+            let postProcessModel = entry.postProcess?.model ?? OpenAIProvider.defaultPostProcessModel
             return FallbackProvider(chain: chain) { model in
-                OpenAIProvider(apiKey: entry.apiKey, model: model)
+                OpenAIProvider(
+                    apiKey: entry.apiKey,
+                    model: model,
+                    postProcessBaseURL: postProcessBaseURL,
+                    postProcessModel: postProcessModel
+                )
             }
         case .gemini:
             return FallbackProvider(chain: chain) { model in

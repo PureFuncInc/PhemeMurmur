@@ -2,15 +2,26 @@ import Foundation
 
 struct OpenAIProvider: TranscriptionProvider {
     static let defaultModel = "gpt-4o-mini-transcribe-2025-12-15"
+    static let defaultPostProcessBaseURL = "https://api.openai.com/v1"
+    static let defaultPostProcessModel = "gpt-5-nano"
     /// Placeholder written by Config.defaultConfigContent for a fresh install.
     private static let placeholderKey = "sk-proj-xxx"
 
     let apiKey: String
     let modelName: String
+    let postProcessBaseURL: String
+    let postProcessModel: String
 
-    init(apiKey: String, model: String = Self.defaultModel) {
+    init(
+        apiKey: String,
+        model: String = Self.defaultModel,
+        postProcessBaseURL: String = Self.defaultPostProcessBaseURL,
+        postProcessModel: String = Self.defaultPostProcessModel
+    ) {
         self.apiKey = apiKey
         self.modelName = model
+        self.postProcessBaseURL = postProcessBaseURL
+        self.postProcessModel = postProcessModel
     }
 
     var isKeyConfigured: Bool {
@@ -91,14 +102,17 @@ struct OpenAIProvider: TranscriptionProvider {
     }
 
     private func postProcess(text: String, instruction: String) async throws -> String {
-        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
+        let trimmedBase = postProcessBaseURL.hasSuffix("/")
+            ? String(postProcessBaseURL.dropLast())
+            : postProcessBaseURL
+        let url = URL(string: "\(trimmedBase)/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         let body: [String: Any] = [
-            "model": "gpt-5-nano",
+            "model": postProcessModel,
             "messages": [
                 ["role": "system", "content": instruction],
                 ["role": "user", "content": text],
