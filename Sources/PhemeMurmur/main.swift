@@ -628,20 +628,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateIcon() {
-        let symbolName: String
-        let color: NSColor
         switch state {
         case .idle:
-            symbolName = "waveform"
-            color = .white
+            setIcon(symbolName: "waveform", color: nil)
         case .recording:
-            symbolName = "record.circle"
-            color = .systemRed
+            setIcon(symbolName: "record.circle", color: .systemRed)
         case .transcribing:
-            symbolName = "text.bubble"
-            color = .systemBlue
+            setIcon(symbolName: "text.bubble", color: .systemBlue)
         }
-        setIcon(symbolName: symbolName, color: color)
     }
 
     private func showErrorIcon(persistent: Bool = false) {
@@ -654,14 +648,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func setIcon(symbolName: String, color: NSColor) {
+    private func setIcon(symbolName: String, color: NSColor?) {
         guard let button = statusItem?.button else { return }
         let sizeConfig = NSImage.SymbolConfiguration(pointSize: 18, weight: .regular, scale: .medium)
-        let colorConfig = NSImage.SymbolConfiguration(paletteColors: [color])
-        let config = sizeConfig.applying(colorConfig)
+        let config: NSImage.SymbolConfiguration
+        if let color {
+            config = sizeConfig.applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+        } else {
+            config = sizeConfig
+        }
         if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
             .withSymbolConfiguration(config) {
-            image.isTemplate = false
+            image.isTemplate = (color == nil)
             button.image = image
             button.title = ""
         } else {
