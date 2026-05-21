@@ -18,5 +18,7 @@
     <string>AppIcon</string>
     <key>NSMicrophoneUsageDescription</key>
     <string>PhemeMurmur needs microphone access to record your voice for transcription.</string>
+    <key>NSSpeechRecognitionUsageDescription</key>
+    <string>PhemeMurmur uses on-device speech recognition to transcribe your recordings locally.</string>
 </dict>
 </plist>

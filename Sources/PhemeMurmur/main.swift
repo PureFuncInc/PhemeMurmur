@@ -149,10 +149,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let config = Config.loadConfig() {
             let entries = config.resolvedProviders
             for (name, entry) in entries {
-                providers[name] = Self.makeProvider(for: entry)
+                if let provider = Self.makeProvider(for: entry) {
+                    providers[name] = provider
+                } else {
+                    print("Skipped provider \(name): unavailable on this macOS version")
+                }
             }
+            Self.injectBuiltInProvidersIfNeeded(into: &providers)
             if let active = config.resolvedActiveProvider, providers[active] != nil {
                 activeProviderName = active
+            } else if !providers.isEmpty {
+                activeProviderName = providers.keys.sorted().first ?? ""
             }
             if providers.isEmpty {
                 print("Error: No API key configured in \(Config.configPath)")
@@ -480,10 +487,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let config = Config.loadConfig() else { return }
         providers.removeAll()
         for (n, entry) in config.resolvedProviders {
-            providers[n] = Self.makeProvider(for: entry)
+            if let provider = Self.makeProvider(for: entry) {
+                providers[n] = provider
+            }
         }
+        Self.injectBuiltInProvidersIfNeeded(into: &providers)
         if providers[activeProviderName] == nil {
             activeProviderName = providers.keys.sorted().first ?? ""
+        }
+    }
+
+    /// Auto-registers built-in providers that don't require any config (currently
+    /// only Apple on-device speech on macOS 26+). Users who upgrade from an older
+    /// version still see these in the menu without editing config.jsonc.
+    private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider]) {
+        if #available(macOS 26.0, *), providers["Apple"] == nil {
+            providers["Apple"] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
+                AppleSpeechProvider(model: model)
+            }
         }
     }
 
@@ -541,15 +562,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
-    private static func makeProvider(for entry: ProviderEntry) -> TranscriptionProvider {
+    private static func makeProvider(for entry: ProviderEntry) -> TranscriptionProvider? {
         let chain = entry.type.fallbackChain
+        let apiKey = entry.apiKey ?? ""
         switch entry.type {
         case .openai:
             let postProcessBaseURL = entry.postProcess?.baseURL ?? OpenAIProvider.defaultPostProcessBaseURL
             let postProcessModel = entry.postProcess?.model ?? OpenAIProvider.defaultPostProcessModel
             return FallbackProvider(chain: chain) { model in
                 OpenAIProvider(
-                    apiKey: entry.apiKey,
+                    apiKey: apiKey,
                     model: model,
                     postProcessBaseURL: postProcessBaseURL,
                     postProcessModel: postProcessModel
@@ -557,7 +579,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         case .gemini:
             return FallbackProvider(chain: chain) { model in
-                GeminiProvider(apiKey: entry.apiKey, model: model)
+                GeminiProvider(apiKey: apiKey, model: model)
+            }
+        case .apple:
+            guard #available(macOS 26.0, *) else { return nil }
+            return FallbackProvider(chain: chain) { model in
+                AppleSpeechProvider(model: model)
             }
         }
     }

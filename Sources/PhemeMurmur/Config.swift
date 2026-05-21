@@ -8,6 +8,7 @@ struct PromptTemplate: Decodable {
 enum ProviderType: String, Decodable {
     case openai
     case gemini
+    case apple
 }
 
 extension ProviderType {
@@ -23,6 +24,8 @@ extension ProviderType {
             ]
         case .openai:
             return [OpenAIProvider.defaultModel]
+        case .apple:
+            return ["apple-speech-on-device"]
         }
     }
 }
@@ -39,7 +42,7 @@ struct PostProcessConfig: Decodable {
 
 struct ProviderEntry: Decodable {
     let type: ProviderType
-    let apiKey: String
+    let apiKey: String?
     let postProcess: PostProcessConfig?
 
     enum CodingKeys: String, CodingKey {
@@ -117,6 +120,9 @@ enum Config {
     static let defaultConfigContent = """
 {
     "providers": {
+        // Apple's on-device speech recognition (macOS 26+). No API key required.
+        // First use downloads the language model and prompts for permission.
+        "Apple": { "type": "apple" },
         "OpenAI": {
             "type": "openai",
             "api-key": "sk-proj-xxx"
@@ -130,7 +136,7 @@ enum Config {
         },
         "Gemini": { "type": "gemini", "api-key": "AIzaxxx" }
     },
-    "active-provider": "Gemini",
+    "active-provider": "Apple",
 
     // Hotkey to start/stop recording. Options: right-shift, right-option, right-control, right-command, fn
     "hotkey": "right-shift",
