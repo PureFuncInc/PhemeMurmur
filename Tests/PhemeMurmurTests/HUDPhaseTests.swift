@@ -29,7 +29,23 @@ final class HUDPhaseTests: XCTestCase {
     func testDoneDismissesAfterShortDelay() {
         let p = HUDPhase.done.presentation
         XCTAssertEqual(p.capsuleText, "DONE")
-        XCTAssertEqual(p.autoDismissAfter, 1.2)
+        XCTAssertEqual(p.autoDismissAfter, 0.7)
+    }
+
+    func testDoneClearsTheScreenWellBeforeTheFailureCardDoes() {
+        // The text is already pasted when done appears, so it must be the
+        // shortest-lived card; a failure is the one the user has to read.
+        let done = HUDPhase.done.presentation.autoDismissAfter ?? .infinity
+        let failed = HUDPhase.failed(message: "x").presentation.autoDismissAfter ?? 0
+        XCTAssertLessThan(done, failed)
+    }
+
+    func testTheHUDIsGoneWithinAboutASecondOfThePaste() {
+        // Transcribing may still owe its dwell when the text lands, and the done
+        // card follows it, so the two together are what the user waits through.
+        let dwell = HUDPhase.transcribing(provider: "x").presentation.minimumDwell
+        let done = HUDPhase.done.presentation.autoDismissAfter ?? 0
+        XCTAssertLessThanOrEqual(dwell + done, 1.2)
     }
 
     func testFailedShowsMessageAndLingersLonger() {

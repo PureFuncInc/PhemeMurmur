@@ -63,7 +63,8 @@ final class OnboardingFlowTests: XCTestCase {
 
     func testKickersAreASequentialFourStepRun() {
         XCTAssertEqual(OnboardingPage.allCases.map(\.kicker),
-                       ["STEP 01 / 04", "STEP 02 / 04", "STEP 03 / 04", "STEP 04 / 04"])
+                       ["BOOT SEQ · 1 OF 4", "BOOT SEQ · 2 OF 4",
+                        "BOOT SEQ · 3 OF 4", "BOOT SEQ · 4 OF 4"])
         XCTAssertEqual(OnboardingPage.allCases.count, 4)
     }
 

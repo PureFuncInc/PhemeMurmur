@@ -1,175 +1,245 @@
 #!/usr/bin/env swift
+
 import AppKit
+import CoreGraphics
 import Foundation
 
-// Geometry mirrors Sources/PhemeMurmur/UI/WaveformGeometry.swift. This script runs
-// standalone via `swift scripts/generate_icon.swift`, so it cannot import the target.
-let heightRatios: [CGFloat] = [0.33, 0.66, 1.0, 0.66, 0.33]
-let tallestRatio: CGFloat = 0.54
-let barWidthRatio: CGFloat = 0.065
-let gapRatio: CGFloat = 0.055
+// Mark III app icon: a forge-lit arc reactor on a dark plate, inside the macOS
+// squircle with a gold hairline rim.
+//
+// This script runs standalone (`swift scripts/generate_icon.swift`) so it cannot
+// import the app target. The palette below therefore duplicates MarkIII.swift —
+// keep the two in sync when the colours change.
 
-func bars(in size: CGFloat) -> [CGRect] {
-    let barWidth = size * barWidthRatio
-    let gap = size * gapRatio
-    let total = barWidth * CGFloat(heightRatios.count) + gap * CGFloat(heightRatios.count - 1)
-    let startX = (size - total) / 2
-    return heightRatios.enumerated().map { index, ratio in
-        let height = size * tallestRatio * ratio
-        let x = startX + CGFloat(index) * (barWidth + gap)
-        return CGRect(x: x, y: (size - height) / 2, width: barWidth, height: height)
-    }
+let gold       = CGColor(srgbRed: 0.878, green: 0.647, blue: 0.290, alpha: 1)  // #E0A54A
+let goldBright = CGColor(srgbRed: 1.000, green: 0.851, blue: 0.541, alpha: 1)  // #FFD98A
+let arc        = CGColor(srgbRed: 0.549, green: 0.902, blue: 1.000, alpha: 1)  // #8CE6FF
+
+let space = CGColorSpace(name: CGColorSpace.sRGB)!
+
+func rgba(_ c: CGColor, _ alpha: CGFloat) -> CGColor {
+    c.copy(alpha: alpha) ?? c
 }
 
-func rgb(_ r: Double, _ g: Double, _ b: Double, _ a: Double = 1) -> CGColor {
+func srgb(_ r: Double, _ g: Double, _ b: Double, _ a: Double = 1) -> CGColor {
     CGColor(srgbRed: r, green: g, blue: b, alpha: a)
 }
 
-let spaceTop = rgb(0.106, 0.137, 0.314)
-let spaceBottom = rgb(0.031, 0.043, 0.102)
-let cyan = rgb(0.239, 0.910, 1.000)
-let violet = rgb(0.482, 0.361, 1.000)
-let iceWhite = rgb(0.714, 0.984, 1.000)
+/// The macOS squircle, approximated with a continuous-curvature rounded rect.
+func squirclePath(_ rect: CGRect, radius: CGFloat) -> CGPath {
+    let p = CGMutablePath()
+    let r = min(radius, min(rect.width, rect.height) / 2)
+    // Control-point offset that turns the circular corner into the flatter,
+    // continuous curve Apple uses. 1.528 is the standard superellipse factor.
+    let k = r * (1 - 1 / 1.528)
+    p.move(to: CGPoint(x: rect.minX + r, y: rect.minY))
+    p.addLine(to: CGPoint(x: rect.maxX - r, y: rect.minY))
+    p.addCurve(to: CGPoint(x: rect.maxX, y: rect.minY + r),
+               control1: CGPoint(x: rect.maxX - k, y: rect.minY),
+               control2: CGPoint(x: rect.maxX, y: rect.minY + k))
+    p.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - r))
+    p.addCurve(to: CGPoint(x: rect.maxX - r, y: rect.maxY),
+               control1: CGPoint(x: rect.maxX, y: rect.maxY - k),
+               control2: CGPoint(x: rect.maxX - k, y: rect.maxY))
+    p.addLine(to: CGPoint(x: rect.minX + r, y: rect.maxY))
+    p.addCurve(to: CGPoint(x: rect.minX, y: rect.maxY - r),
+               control1: CGPoint(x: rect.minX + k, y: rect.maxY),
+               control2: CGPoint(x: rect.minX, y: rect.maxY - k))
+    p.addLine(to: CGPoint(x: rect.minX, y: rect.minY + r))
+    p.addCurve(to: CGPoint(x: rect.minX + r, y: rect.minY),
+               control1: CGPoint(x: rect.minX, y: rect.minY + k),
+               control2: CGPoint(x: rect.minX + k, y: rect.minY))
+    p.closeSubpath()
+    return p
+}
 
-// Star dust positions as fractions of the canvas, fixed so every size matches.
-let starDust: [(x: CGFloat, y: CGFloat, r: CGFloat, a: CGFloat)] = [
-    (0.21, 0.81, 0.0085, 0.75),
-    (0.80, 0.74, 0.0065, 0.55),
-    (0.75, 0.24, 0.0075, 0.50),
-    (0.27, 0.18, 0.0055, 0.45),
-]
+/// Renders the icon at one pixel size.
+///
+/// Detail drops away as the canvas shrinks, exactly like the design's
+/// breakpoints: individual sunburst beams become a crisp spoke ring below 44px,
+/// and below 15px only the core and its rim survive.
+func renderIcon(size: CGFloat, recording: Bool = false) -> CGImage {
+    let s = size
+    let ctx = CGContext(data: nil,
+                        width: Int(s), height: Int(s),
+                        bitsPerComponent: 8, bytesPerRow: 0,
+                        space: space,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+    ctx.setShouldAntialias(true)
+    ctx.interpolationQuality = .high
 
-func renderIcon(size: Int) -> Data? {
-    let s = CGFloat(size)
-    guard let ctx = CGContext(
-        data: nil, width: size, height: size,
-        bitsPerComponent: 8, bytesPerRow: 0,
-        space: CGColorSpace(name: CGColorSpace.sRGB)!,
-        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-    ) else { return nil }
+    let rect = CGRect(x: 0, y: 0, width: s, height: s)
+    let center = CGPoint(x: s / 2, y: s / 2)
+    let detail = s >= 44
+    let mid = s >= 15
+    let coreDiameter = s * 0.30
+    let tint = recording
+        ? CGColor(srgbRed: 1.0, green: 0.302, blue: 0.180, alpha: 1)   // #FF4D2E
+        : arc
 
-    let minimal = size <= 32
-
-    // Squircle clip.
-    let radius = s * 0.2237
-    let clipPath = CGPath(roundedRect: CGRect(x: 0, y: 0, width: s, height: s),
-                          cornerWidth: radius, cornerHeight: radius, transform: nil)
-    ctx.addPath(clipPath)
+    // Clip everything to the squircle so the plate edge is the icon's silhouette.
+    ctx.saveGState()
+    ctx.addPath(squirclePath(rect, radius: s * 0.2237))
     ctx.clip()
 
-    // Deep space radial background.
-    let bgGradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                colors: [spaceTop, spaceBottom] as CFArray,
-                                locations: [0, 1])!
-    ctx.drawRadialGradient(bgGradient,
-                           startCenter: CGPoint(x: s * 0.5, y: s * 0.62), startRadius: 0,
-                           endCenter: CGPoint(x: s * 0.5, y: s * 0.5), endRadius: s * 0.78,
+    // Cold steel-blue plate, darkening to near black at the corners.
+    let bg = CGGradient(colorsSpace: space, colors: [
+        srgb(0.071, 0.196, 0.255),   // #123241
+        srgb(0.039, 0.086, 0.125),   // #0A1620
+        srgb(0.031, 0.031, 0.047),   // #08080C
+        srgb(0.020, 0.020, 0.027),   // #050507
+    ] as CFArray, locations: [0, 0.42, 0.78, 1])!
+    ctx.drawRadialGradient(bg, startCenter: center, startRadius: 0,
+                           endCenter: center, endRadius: s * 0.72,
                            options: [.drawsAfterEndLocation])
 
-    if !minimal {
-        // Horizon glow band beneath the bars: a radial gradient fading to zero alpha,
-        // squashed into an ellipse via a scale transform, so there is no hard edge
-        // anywhere and the glow blends straight into the background.
-        ctx.saveGState()
-        let bandCenter = CGPoint(x: s * 0.5, y: s * 0.297)
-        let bandWidth = s * 0.74
-        let bandHeight = s * 0.16
-        ctx.translateBy(x: bandCenter.x, y: bandCenter.y)
-        ctx.scaleBy(x: 1, y: bandHeight / bandWidth)
-        let glowGradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                      colors: [cyan.copy(alpha: 0.5)!, cyan.copy(alpha: 0)!] as CFArray,
-                                      locations: [0, 1])!
-        ctx.drawRadialGradient(glowGradient,
-                               startCenter: .zero, startRadius: 0,
-                               endCenter: .zero, endRadius: bandWidth / 2,
-                               options: [])
-        ctx.restoreGState()
+    // Coloured bloom behind the reactor.
+    if detail {
+        let halo = CGGradient(colorsSpace: space, colors: [
+            rgba(tint, 0.2), rgba(tint, 0),
+        ] as CFArray, locations: [0, 0.7])!
+        ctx.drawRadialGradient(halo, startCenter: center, startRadius: 0,
+                               endCenter: center, endRadius: s * 0.43, options: [])
+    }
 
-        // Orbital arc on the right, fading at both ends via a gradient-filled stroke.
-        ctx.saveGState()
-        let arc = CGMutablePath()
-        arc.addArc(center: CGPoint(x: s * 0.5, y: s * 0.5), radius: s * 0.46,
-                   startAngle: -.pi / 2.6, endAngle: .pi / 2.6, clockwise: false)
-        ctx.addPath(arc.copy(strokingWithWidth: s * 0.017, lineCap: .round,
-                             lineJoin: .round, miterLimit: 10))
-        ctx.clip()
-        let arcGradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                     colors: [violet, cyan, violet] as CFArray,
-                                     locations: [0, 0.5, 1])!
-        ctx.drawLinearGradient(arcGradient,
-                               start: CGPoint(x: s, y: 0), end: CGPoint(x: s, y: s),
-                               options: [])
-        ctx.restoreGState()
-
-        // Star dust.
-        for star in starDust {
-            ctx.setFillColor(rgb(0.812, 0.902, 1.0, Double(star.a)))
-            ctx.fillEllipse(in: CGRect(x: s * star.x - s * star.r, y: s * star.y - s * star.r,
-                                       width: s * star.r * 2, height: s * star.r * 2))
+    if detail {
+        // Sixteen tapered beams, white-hot at the rim and fading inward.
+        let count = 16
+        let w = s * 0.044
+        let length = s * 0.215
+        let outerRadius = s * 0.255
+        for i in 0..<count {
+            let angle = CGFloat(i) * (2 * .pi / CGFloat(count))
+            ctx.saveGState()
+            ctx.translateBy(x: center.x, y: center.y)
+            ctx.rotate(by: angle)
+            // Bar spans [outerRadius - length, outerRadius] along +y.
+            let bar = CGRect(x: -w / 2, y: outerRadius - length, width: w, height: length)
+            ctx.addPath(CGPath(roundedRect: bar, cornerWidth: w / 2, cornerHeight: w / 2,
+                               transform: nil))
+            ctx.clip()
+            let beam = CGGradient(colorsSpace: space, colors: [
+                srgb(1, 1, 1, 0.9), goldBright, rgba(gold, 0.15),
+            ] as CFArray, locations: [0, 0.55, 1])!
+            ctx.drawLinearGradient(beam,
+                                   start: CGPoint(x: 0, y: outerRadius),
+                                   end: CGPoint(x: 0, y: outerRadius - length),
+                                   options: [])
+            ctx.restoreGState()
+        }
+    } else {
+        // Small sizes: a crisp spoke ring reads better than 16 thin bars.
+        let count = s >= 26 ? 12 : 8
+        let step = 2 * CGFloat.pi / CGFloat(count)
+        let duty = step * 0.28
+        let r1 = s * 0.30
+        let r2 = s * 0.46
+        ctx.setFillColor(goldBright)
+        for i in 0..<count {
+            let start = CGFloat(i) * step - duty / 2
+            let wedge = CGMutablePath()
+            wedge.addArc(center: center, radius: r2,
+                         startAngle: start, endAngle: start + duty, clockwise: false)
+            wedge.addArc(center: center, radius: r1,
+                         startAngle: start + duty, endAngle: start, clockwise: true)
+            wedge.closeSubpath()
+            ctx.addPath(wedge)
+            ctx.fillPath()
         }
     }
 
-    // Waveform bars, cyan-to-violet vertical gradient with an outer glow.
-    let barPath = CGMutablePath()
-    for bar in bars(in: s) {
-        barPath.addRoundedRect(in: bar, cornerWidth: bar.width / 2, cornerHeight: bar.width / 2)
-    }
+    if mid {
+        // Outer containment circle in the phase tint.
+        ctx.setStrokeColor(rgba(tint, 0.4))
+        ctx.setLineWidth(max(1, s * 0.022))
+        ctx.addEllipse(in: CGRect(x: center.x - s * 0.31, y: center.y - s * 0.31,
+                                  width: s * 0.62, height: s * 0.62))
+        ctx.strokePath()
 
-    if !minimal {
+        // Gold ring hugging the beam roots.
+        let ringRadius = coreDiameter * 1.62 / 2
         ctx.saveGState()
-        ctx.setShadow(offset: .zero, blur: s * 0.05, color: cyan.copy(alpha: 0.7))
-        ctx.setFillColor(cyan.copy(alpha: 0.9)!)
-        ctx.addPath(barPath)
-        ctx.fillPath()
+        ctx.setShadow(offset: .zero, blur: s * 0.07, color: rgba(gold, 0.65))
+        ctx.setStrokeColor(goldBright)
+        ctx.setLineWidth(max(1, s * 0.028))
+        ctx.addEllipse(in: CGRect(x: center.x - ringRadius, y: center.y - ringRadius,
+                                  width: ringRadius * 2, height: ringRadius * 2))
+        ctx.strokePath()
         ctx.restoreGState()
     }
 
+    // White-hot core.
     ctx.saveGState()
-    ctx.addPath(barPath)
-    ctx.clip()
-    let barGradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
-                                 colors: [violet, cyan, iceWhite] as CFArray,
-                                 locations: [0, 0.55, 1])!
-    ctx.drawLinearGradient(barGradient,
-                           start: CGPoint(x: 0, y: s * 0.2), end: CGPoint(x: 0, y: s * 0.8),
-                           options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+    ctx.setShadow(offset: .zero, blur: s * 0.16, color: tint)
+    ctx.setFillColor(tint)
+    ctx.addEllipse(in: CGRect(x: center.x - coreDiameter / 2, y: center.y - coreDiameter / 2,
+                              width: coreDiameter, height: coreDiameter))
+    ctx.fillPath()
     ctx.restoreGState()
 
-    guard let cgImage = ctx.makeImage() else { return nil }
-    return NSBitmapImageRep(cgImage: cgImage)
-        .representation(using: .png, properties: [.compressionFactor: 1.0])
+    ctx.saveGState()
+    ctx.addEllipse(in: CGRect(x: center.x - coreDiameter / 2, y: center.y - coreDiameter / 2,
+                              width: coreDiameter, height: coreDiameter))
+    ctx.clip()
+    let core = CGGradient(colorsSpace: space, colors: [
+        srgb(1, 1, 1), tint, srgb(0.118, 0.471, 0.627, 0.9), srgb(0.039, 0.118, 0.157, 0.9),
+    ] as CFArray, locations: [0.18, 0.52, 0.82, 1])!
+    ctx.drawRadialGradient(core, startCenter: center, startRadius: 0,
+                           endCenter: center, endRadius: coreDiameter / 2,
+                           options: [.drawsAfterEndLocation])
+    ctx.restoreGState()
+
+    ctx.restoreGState()
+
+    // Gold hairline rim, drawn last so nothing paints over it.
+    ctx.saveGState()
+    let rimWidth = max(1, s * 0.016)
+    ctx.addPath(squirclePath(rect.insetBy(dx: rimWidth / 2, dy: rimWidth / 2),
+                             radius: s * 0.2237 - rimWidth / 2))
+    ctx.setStrokeColor(rgba(gold, 0.7))
+    ctx.setLineWidth(rimWidth)
+    ctx.strokePath()
+    ctx.restoreGState()
+
+    return ctx.makeImage()!
 }
 
-let iconsetDir = "AppIcon.iconset"
-let fm = FileManager.default
-try! fm.createDirectory(atPath: iconsetDir, withIntermediateDirectories: true)
+// MARK: - Output
 
-let sizes: [(name: String, size: Int)] = [
-    ("icon_16x16", 16), ("icon_16x16@2x", 32),
-    ("icon_32x32", 32), ("icon_32x32@2x", 64),
-    ("icon_128x128", 128), ("icon_128x128@2x", 256),
-    ("icon_256x256", 256), ("icon_256x256@2x", 512),
-    ("icon_512x512", 512), ("icon_512x512@2x", 1024),
+let fm = FileManager.default
+let repoRoot = URL(fileURLWithPath: fm.currentDirectoryPath)
+let iconsetURL = repoRoot.appendingPathComponent("AppIcon.iconset")
+try? fm.removeItem(at: iconsetURL)
+try fm.createDirectory(at: iconsetURL, withIntermediateDirectories: true)
+
+/// (pixel size, iconset filename) — the full set macOS expects.
+let variants: [(CGFloat, String)] = [
+    (16, "icon_16x16.png"),     (32, "icon_16x16@2x.png"),
+    (32, "icon_32x32.png"),     (64, "icon_32x32@2x.png"),
+    (128, "icon_128x128.png"),  (256, "icon_128x128@2x.png"),
+    (256, "icon_256x256.png"),  (512, "icon_256x256@2x.png"),
+    (512, "icon_512x512.png"),  (1024, "icon_512x512@2x.png"),
 ]
 
-for (name, size) in sizes {
-    guard let data = renderIcon(size: size) else {
-        print("Failed to render \(name)")
-        exit(1)
+for (size, name) in variants {
+    let image = renderIcon(size: size)
+    let rep = NSBitmapImageRep(cgImage: image)
+    rep.size = NSSize(width: size, height: size)
+    guard let data = rep.representation(using: .png, properties: [:]) else {
+        fatalError("Failed to encode \(name)")
     }
-    try! data.write(to: URL(fileURLWithPath: "\(iconsetDir)/\(name).png"))
-    print("Generated \(iconsetDir)/\(name).png")
+    try data.write(to: iconsetURL.appendingPathComponent(name))
 }
 
-let iconutil = Process()
-iconutil.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
-iconutil.arguments = ["-c", "icns", iconsetDir, "-o", "Resources/AppIcon.icns"]
-try! iconutil.run()
-iconutil.waitUntilExit()
-guard iconutil.terminationStatus == 0 else {
-    print("iconutil failed with status \(iconutil.terminationStatus)")
-    exit(1)
+let icnsURL = repoRoot.appendingPathComponent("Resources/AppIcon.icns")
+let task = Process()
+task.executableURL = URL(fileURLWithPath: "/usr/bin/iconutil")
+task.arguments = ["-c", "icns", iconsetURL.path, "-o", icnsURL.path]
+try task.run()
+task.waitUntilExit()
+guard task.terminationStatus == 0 else {
+    fatalError("iconutil failed with status \(task.terminationStatus)")
 }
-print("Created Resources/AppIcon.icns")
-try? fm.removeItem(atPath: iconsetDir)
-print("Done!")
+
+try? fm.removeItem(at: iconsetURL)
+print("Wrote \(icnsURL.path)")

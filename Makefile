@@ -40,6 +40,9 @@ app: build
 		echo "Injected CFBundleVersion=$$COUNT"; \
 	fi
 	cp Resources/AppIcon.icns $(CONTENTS)/Resources/AppIcon.icns
+	mkdir -p $(CONTENTS)/Resources/Fonts
+	cp Resources/Fonts/*.ttf $(CONTENTS)/Resources/Fonts/
+	cp Resources/Fonts/OFL-*.txt $(CONTENTS)/Resources/Fonts/
 	@bash scripts/ensure_signing_cert.sh "$(CERT_NAME)" || true
 	@if security find-certificate -c "$(CERT_NAME)" ~/Library/Keychains/login.keychain-db >/dev/null 2>&1; then \
 		codesign --force --deep --sign "$(CERT_NAME)" $(APP_BUNDLE); \
@@ -60,7 +63,12 @@ install: app
 	ditto -c -k --sequesterRsrc --keepParent $(APP_BUNDLE) $(DIST_DIR)/$(ZIP_NAME)
 	@echo "Created $(DIST_DIR)/$(ZIP_NAME)"
 	rm -rf $(APP_BUNDLE)
-	rm -f ~/.config/pheme-murmur/.onboarding-done
+	@# Reinstalling keeps whatever onboarding state you already had. Pass
+	@# ONBOARD=1 to replay the boot sequence, e.g. `make install ONBOARD=1`.
+	@if [ -n "$(ONBOARD)" ]; then \
+		rm -f ~/.config/pheme-murmur/.onboarding-done; \
+		echo "Reset onboarding; the boot sequence will run again"; \
+	fi
 	open /Applications/$(APP_BUNDLE)
 
 clean:
