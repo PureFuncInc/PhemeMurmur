@@ -81,7 +81,16 @@ struct OnboardingView: View {
             permissions = PermissionStatus.current()
         }
         .onReceive(NotificationCenter.default.publisher(for: .phemeDidTranscribeOnce)) { _ in
-            didRecordOnce = true
+            // Only a recording completed while actually on the tryIt page
+            // counts — a recording finishing on an earlier page (e.g. because
+            // the user pressed the hotkey before reaching tryIt) must not
+            // pre-satisfy this page's gate.
+            if page == .tryIt { didRecordOnce = true }
+        }
+        .onChange(of: page) { newPage in
+            if newPage == .tryIt {
+                NotificationCenter.default.post(name: .phemeOnboardingReachedTryIt, object: nil)
+            }
         }
     }
 

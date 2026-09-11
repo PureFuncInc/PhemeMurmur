@@ -55,4 +55,11 @@ final class OnboardingFlowTests: XCTestCase {
             XCTAssertFalse(page.body.isEmpty)
         }
     }
+
+    func testHotkeyBlockedOnlyWhileOnboardingActiveAndBeforeTryIt() {
+        XCTAssertFalse(OnboardingFlow.hotkeyBlocked(onboardingActive: false, reachedTryIt: false))
+        XCTAssertFalse(OnboardingFlow.hotkeyBlocked(onboardingActive: false, reachedTryIt: true))
+        XCTAssertTrue(OnboardingFlow.hotkeyBlocked(onboardingActive: true, reachedTryIt: false))
+        XCTAssertFalse(OnboardingFlow.hotkeyBlocked(onboardingActive: true, reachedTryIt: true))
+    }
 }

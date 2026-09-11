@@ -20,6 +20,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var recordingStartedAt: Date?
     private var hudTickTimer: Timer?
 
+    /// True from the moment the onboarding window opens until it closes
+    /// (finish button or the red close button — `windowWillClose` fires on
+    /// both). Used together with `onboardingReachedTryIt` to gate the hotkey.
+    private var onboardingActive = false
+    /// True once onboarding reaches its final page, which deliberately wants
+    /// the hotkey to work.
+    private var onboardingReachedTryIt = false
+
+    private var hotkeyBlockedByOnboarding: Bool {
+        OnboardingFlow.hotkeyBlocked(onboardingActive: onboardingActive, reachedTryIt: onboardingReachedTryIt)
+    }
+
     private var activeProvider: TranscriptionProvider? {
         providers[activeProviderName]
     }
@@ -38,16 +50,25 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // setupApp() must run before the onboarding window shows: its "try it"
         // page asks the user to record once, which only works if the hotkey
         // monitor and providers it wires up are already live.
-        wireSettingsStore()
+        wireLaunchObservers()
         setupApp()
-        onboarding.showIfNeeded {}
+
+        onboardingActive = true
+        onboarding.showIfNeeded { [weak self] in
+            self?.onboardingActive = false
+        }
     }
 
-    private func wireSettingsStore() {
+    private func wireLaunchObservers() {
         SettingsWindowController.shared.store.onChange = { [weak self] in
             self?.reloadProvidersFromConfig()
             self?.applyHotkeyFromConfig()
             self?.applyGeneralSettingsFromConfig()
+        }
+        NotificationCenter.default.addObserver(
+            forName: .phemeOnboardingReachedTryIt, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.onboardingReachedTryIt = true
         }
     }
 
@@ -160,6 +181,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleToggle() {
+        guard !hotkeyBlockedByOnboarding else { return }
         switch state {
         case .idle:
             startRecording()
@@ -282,7 +304,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Error: \(Self.truncate("No API key"))")
             showErrorIcon(persistent: true)
             print("Cannot transcribe: No active provider configured.")
-            hud.hide()
+            hud.show(.failed(message: "尚未設定轉錄服務"))
             return
         }
 

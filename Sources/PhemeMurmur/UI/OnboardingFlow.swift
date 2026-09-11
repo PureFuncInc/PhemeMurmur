@@ -59,8 +59,17 @@ enum OnboardingFlow {
     static func next(after page: OnboardingPage) -> OnboardingPage? {
         OnboardingPage(rawValue: page.rawValue + 1)
     }
+
+    /// Whether the hotkey should be ignored because onboarding is still on
+    /// screen. The `tryIt` page deliberately wants the hotkey to work, so the
+    /// block lifts as soon as the user reaches it, even though the window is
+    /// still open.
+    static func hotkeyBlocked(onboardingActive: Bool, reachedTryIt: Bool) -> Bool {
+        onboardingActive && !reachedTryIt
+    }
 }
 
 extension Notification.Name {
     static let phemeDidTranscribeOnce = Notification.Name("phemeDidTranscribeOnce")
+    static let phemeOnboardingReachedTryIt = Notification.Name("phemeOnboardingReachedTryIt")
 }
