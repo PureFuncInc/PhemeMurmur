@@ -383,59 +383,22 @@ enum Config {
         return try? JSONDecoder().decode(ConfigFile.self, from: strippedData)
     }
 
-    // Strips // line comments and /* */ block comments, respecting string literals.
-    private static func stripComments(from source: String) -> String {
+    /// Strips `//` line comments and `/* */` block comments, respecting string literals.
+    /// Built directly on `commentRanges`, the single scanner that knows the comment
+    /// grammar — this is just "the source with every comment range cut out". Comment
+    /// text (including any newlines embedded in a block comment) is removed rather than
+    /// replaced with whitespace: nothing downstream reports line/column numbers from the
+    /// stripped text (`loadConfig` discards `JSONDecoder` errors via `try?`), so there's
+    /// no line-number accounting to preserve, and this matches the previous
+    /// implementation's behaviour exactly for well-formed input.
+    static func stripComments(from source: String) -> String {
         var result = ""
-        var i = source.startIndex
-        var inString = false
-
-        while i < source.endIndex {
-            let c = source[i]
-            let next = source.index(after: i)
-
-            if inString {
-                result.append(c)
-                if c == "\\" && next < source.endIndex {
-                    // Escaped character — keep both chars, skip ahead
-                    result.append(source[next])
-                    i = source.index(after: next)
-                } else {
-                    if c == "\"" { inString = false }
-                    i = next
-                }
-            } else {
-                if c == "\"" {
-                    inString = true
-                    result.append(c)
-                    i = next
-                } else if c == "/" && next < source.endIndex {
-                    let n = source[next]
-                    if n == "/" {
-                        // Line comment — skip to end of line
-                        var j = source.index(after: next)
-                        while j < source.endIndex && source[j] != "\n" { j = source.index(after: j) }
-                        i = j
-                    } else if n == "*" {
-                        // Block comment — skip to */
-                        var j = source.index(after: next)
-                        while j < source.endIndex {
-                            let jNext = source.index(after: j)
-                            if source[j] == "*" && jNext < source.endIndex && source[jNext] == "/" {
-                                i = source.index(after: jNext)
-                                break
-                            }
-                            j = source.index(after: j)
-                        }
-                    } else {
-                        result.append(c)
-                        i = next
-                    }
-                } else {
-                    result.append(c)
-                    i = next
-                }
-            }
+        var cursor = source.startIndex
+        for range in commentRanges(in: source) {
+            result += source[cursor..<range.lowerBound]
+            cursor = range.upperBound
         }
+        result += source[cursor...]
         return result
     }
 }
