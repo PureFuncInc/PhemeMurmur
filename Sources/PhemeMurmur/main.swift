@@ -4,22 +4,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
-    private var promptMenuItem: NSMenuItem!
-    private var promptSubmenu: NSMenu!
-    private var providerMenuItem: NSMenuItem!
-    private var providerSubmenu: NSMenu!
-    private var hotkeyMenuItem: NSMenuItem!
-    private var hotkeySubmenu: NSMenu!
-    private var configLogsMenuItem: NSMenuItem!
-    private var configLogsSubmenu: NSMenu!
-    private var showErrorLogMenuItem: NSMenuItem!
-    private var launchAtLoginItem: NSMenuItem!
     private var currentHotkey: HotkeyKey = .rightShift
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
     private let onboarding = OnboardingWindow()
-    private let launchAtLogin = LaunchAtLogin()
     private var providers: [String: TranscriptionProvider] = [:]
     private var activeProviderName: String = ""
     private var prefix: String?
@@ -73,80 +62,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
 
         statusMenu = NSMenu()
-        statusMenu.autoenablesItems = false
+        statusMenu.delegate = self
 
-        statusMenu.addItem(Self.makeMenuItem(
-            title: "About PhemeMurmur",
-            systemImage: "info.circle",
-            action: #selector(showAboutPanel)
-        ))
-        statusMenu.addItem(NSMenuItem.separator())
-
-        statusMenuItem = Self.makeMenuItem(title: "Status: Idle", systemImage: "waveform")
+        statusMenuItem = NSMenuItem(title: "Status: idle", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         statusMenu.addItem(statusMenuItem)
 
         statusMenu.addItem(NSMenuItem.separator())
-
-        providerSubmenu = NSMenu()
-        providerMenuItem = Self.makeMenuItem(title: "Provider", systemImage: "cloud")
-        statusMenu.addItem(providerMenuItem)
-        statusMenu.setSubmenu(providerSubmenu, for: providerMenuItem)
-
-        promptSubmenu = NSMenu()
-        promptMenuItem = Self.makeMenuItem(title: "Prompt", systemImage: "text.bubble")
-        statusMenu.addItem(promptMenuItem)
-        statusMenu.setSubmenu(promptSubmenu, for: promptMenuItem)
-
-        hotkeySubmenu = NSMenu()
-        hotkeyMenuItem = Self.makeMenuItem(title: "Hotkey", systemImage: "keyboard")
-        statusMenu.addItem(hotkeyMenuItem)
-        statusMenu.setSubmenu(hotkeySubmenu, for: hotkeyMenuItem)
-
+        statusMenu.addItem(Self.makeMenuItem(title: "設定…",
+                                             action: #selector(openSettings),
+                                             target: self,
+                                             keyEquivalent: ","))
         statusMenu.addItem(NSMenuItem.separator())
-
-        configLogsSubmenu = NSMenu()
-        configLogsMenuItem = Self.makeMenuItem(title: "Config & Logs", systemImage: "folder")
-        statusMenu.addItem(configLogsMenuItem)
-        statusMenu.setSubmenu(configLogsSubmenu, for: configLogsMenuItem)
-
-        configLogsSubmenu.addItem(Self.makeMenuItem(
-            title: "Open Config Folder",
-            systemImage: "folder",
-            action: #selector(openConfigFolder)
-        ))
-
-        showErrorLogMenuItem = Self.makeMenuItem(
-            title: "Show Error Log",
-            systemImage: "doc.text.magnifyingglass",
-            action: #selector(revealErrorLog)
-        )
-        configLogsSubmenu.addItem(showErrorLogMenuItem)
-
-        statusMenu.addItem(NSMenuItem.separator())
-
-        launchAtLoginItem = NSMenuItem(
-            title: "Launch at Login",
-            action: #selector(toggleLaunchAtLogin),
-            keyEquivalent: ""
-        )
-        statusMenu.addItem(launchAtLoginItem)
-
-        statusMenu.addItem(NSMenuItem.separator())
-
-        statusMenu.addItem(Self.makeMenuItem(
-            title: "Quit",
-            systemImage: "power",
-            action: #selector(quitApp),
-            keyEquivalent: "q"
-        ))
-        statusMenu.delegate = self
+        statusMenu.addItem(Self.makeMenuItem(title: "關於 PhemeMurmur",
+                                             action: #selector(showAboutPanel),
+                                             target: self))
+        statusMenu.addItem(Self.makeMenuItem(title: "結束",
+                                             action: #selector(quitApp),
+                                             target: self,
+                                             keyEquivalent: "q"))
         statusItem.menu = statusMenu
-
-        launchAtLogin.onStateChange = { [weak self] state in
-            self?.setLaunchAtLogin(state: state)
-        }
-        setLaunchAtLogin(state: launchAtLogin.state)
 
         // Load config
         if let config = Config.loadConfig() {
@@ -190,9 +125,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Error: \(Self.truncate("Invalid config syntax"))")
             showErrorIcon(persistent: true)
         }
-        rebuildProviderSubmenu()
-        rebuildPromptSubmenu()
-        rebuildHotkeySubmenu()
 
         // Setup hotkey
         hotkeyManager.onToggle = { [weak self] in
@@ -358,7 +290,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         print("Silence detected by model, skipping paste.")
                         self.state = .idle
                         self.updateStatus("Idle")
-                        self.refreshProviderLabel()
                         self.hud.hide()
                         return
                     }
@@ -373,7 +304,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     PasteService.pasteText(output)
                     self.state = .idle
                     self.updateStatus("Idle")
-                    self.refreshProviderLabel()
                     self.hud.show(.done)
                 }
             } catch {
@@ -383,7 +313,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.state = .idle
                     self.updateStatus("Error: \(Self.truncate(error.localizedDescription))")
                     self.showErrorIcon()
-                    self.refreshProviderLabel()
                     self.hud.show(.failed(message: Self.truncate(error.localizedDescription)))
                 }
             }
@@ -393,126 +322,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func rebuildProviderSubmenu() {
-        providerSubmenu.removeAllItems()
-        for name in providers.keys.sorted() {
-            let item = NSMenuItem(title: name, action: #selector(selectProvider(_:)), keyEquivalent: "")
-            item.representedObject = name
-            item.state = (name == activeProviderName) ? .on : .off
-            providerSubmenu.addItem(item)
+    @objc private func openSettings() {
+        SettingsWindowController.shared.store.onChange = { [weak self] in
+            self?.reloadProvidersFromConfig()
+            self?.applyHotkeyFromConfig()
+            self?.applyGeneralSettingsFromConfig()
         }
-        if !activeProviderName.isEmpty {
-            providerSubmenu.addItem(NSMenuItem.separator())
-            let setKeyItem = NSMenuItem(
-                title: "Set API Key for \(activeProviderName)…",
-                action: #selector(setAPIKeyForActive),
-                keyEquivalent: ""
-            )
-            providerSubmenu.addItem(setKeyItem)
-        }
-        refreshProviderLabel()
-    }
-
-    private func refreshProviderLabel() {
-        if let provider = activeProvider {
-            let model = Self.displayModelName(provider.modelName)
-            providerMenuItem?.title = "Provider: \(activeProviderName) (\(model))"
-        } else {
-            providerMenuItem?.title = "Provider"
-        }
-    }
-
-    private static func displayModelName(_ model: String) -> String {
-        if let range = model.range(of: "-transcribe") {
-            return String(model[..<range.lowerBound])
-        }
-        if model.hasSuffix("-preview") {
-            return String(model.dropLast("-preview".count))
-        }
-        return model
-    }
-
-    @objc private func selectProvider(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        if let provider = providers[name], !provider.isKeyConfigured {
-            // Warn the user and offer to enter a key. Only switch if the key is saved.
-            let saved = runAPIKeyPrompt(
-                for: name,
-                messageText: "API key not set for \(name)",
-                informativeText: "Enter an API key to start using \(name).",
-                style: .warning
-            )
-            guard saved else {
-                // Restore the checkmark on the current active provider.
-                rebuildProviderSubmenu()
-                return
-            }
-        }
-        activateProvider(name)
-    }
-
-    private func activateProvider(_ name: String) {
-        activeProviderName = name
-        Config.saveActiveProvider(name)
-        rebuildProviderSubmenu()
-        if state == .idle {
-            updateStatus("Idle")
-        }
-        print("Switched provider to: \(name)")
-    }
-
-    @objc private func setAPIKeyForActive() {
-        let name = activeProviderName
-        guard !name.isEmpty else { return }
-        _ = runAPIKeyPrompt(
-            for: name,
-            messageText: "Set API Key for \(name)",
-            informativeText: "The key will be saved to config.jsonc.",
-            style: .informational
-        )
-    }
-
-    /// Shows an API-key input alert for `name`, writes the key to config.jsonc on Save, and reloads
-    /// the provider instance so the new key takes effect immediately. Returns true iff a key was saved.
-    @discardableResult
-    private func runAPIKeyPrompt(
-        for name: String,
-        messageText: String,
-        informativeText: String,
-        style: NSAlert.Style
-    ) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = messageText
-        alert.informativeText = informativeText
-        alert.alertStyle = style
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-
-        let textField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        textField.placeholderString = "API key"
-        alert.accessoryView = textField
-        alert.window.initialFirstResponder = textField
-
-        NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else { return false }
-
-        let newKey = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !newKey.isEmpty else { return false }
-
-        if !Config.saveAPIKey(providerName: name, apiKey: newKey) {
-            let err = NSAlert()
-            err.messageText = "Failed to save API key"
-            err.informativeText = "Could not locate provider \"\(name)\" in config.jsonc. Please edit the file manually."
-            err.alertStyle = .warning
-            err.runModal()
-            return false
-        }
-
-        reloadProvidersFromConfig()
-        rebuildProviderSubmenu()
-        print("Updated API key for \(name)")
-        return true
+        SettingsWindowController.shared.show()
     }
 
     private func reloadProvidersFromConfig() {
@@ -524,8 +340,34 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
         }
         Self.injectBuiltInProvidersIfNeeded(into: &providers)
-        if providers[activeProviderName] == nil {
+        if let active = config.resolvedActiveProvider, providers[active] != nil {
+            activeProviderName = active
+        } else if providers[activeProviderName] == nil {
             activeProviderName = providers.keys.sorted().first ?? ""
+        }
+    }
+
+    /// Reapplies the hotkey read from config.jsonc to the running hotkey monitor.
+    /// Extracted from the old menu's `selectHotkey(_:)` action.
+    private func applyHotkeyFromConfig() {
+        guard let config = Config.loadConfig() else { return }
+        currentHotkey = config.resolvedHotkey
+        hotkeyManager.key = currentHotkey
+    }
+
+    /// Re-reads prefix / voice-commands / silence-threshold / prompt template settings
+    /// so changes made in the settings window take effect immediately, mirroring the
+    /// config-loading block in `setupApp()`.
+    private func applyGeneralSettingsFromConfig() {
+        guard let config = Config.loadConfig() else { return }
+        prefix = config.prefix
+        voiceCommandsEnabled = config.resolvedVoiceCommands
+        if let threshold = config.silenceThreshold {
+            Config.silenceThreshold = threshold
+        }
+        promptTemplates = config.promptTemplates ?? [:]
+        if let saved = config.activePromptTemplate, promptTemplates[saved] != nil {
+            activeTemplateName = saved
         }
     }
 
@@ -538,46 +380,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 AppleSpeechProvider(model: model)
             }
         }
-    }
-
-    private func rebuildPromptSubmenu() {
-        promptSubmenu.removeAllItems()
-        for name in promptTemplates.keys.sorted() {
-            let item = NSMenuItem(title: name, action: #selector(selectPromptTemplate(_:)), keyEquivalent: "")
-            item.representedObject = name
-            item.state = (name == activeTemplateName) ? .on : .off
-            promptSubmenu.addItem(item)
-        }
-        promptMenuItem?.title = "Prompt: \(activeTemplateName)"
-    }
-
-    @objc private func selectPromptTemplate(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        activeTemplateName = name
-        Config.saveActivePromptTemplate(name)
-        rebuildPromptSubmenu()
-        print("Switched prompt template to: \(name)")
-    }
-
-    private func rebuildHotkeySubmenu() {
-        hotkeySubmenu.removeAllItems()
-        for key in HotkeyKey.allCases {
-            let item = NSMenuItem(title: key.displayName, action: #selector(selectHotkey(_:)), keyEquivalent: "")
-            item.representedObject = key.rawValue
-            item.state = (key == currentHotkey) ? .on : .off
-            hotkeySubmenu.addItem(item)
-        }
-        hotkeyMenuItem.title = "Hotkey: \(currentHotkey.shortName)"
-    }
-
-    @objc private func selectHotkey(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let key = HotkeyKey(rawValue: raw) else { return }
-        currentHotkey = key
-        hotkeyManager.key = key
-        Config.saveHotkey(key)
-        rebuildHotkeySubmenu()
-        print("Hotkey changed to: \(key.displayName)")
     }
 
     @objc private func showAboutPanel() {
@@ -623,53 +425,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private static func makeMenuItem(
         title: String,
-        systemImage: String,
-        action: Selector? = nil,
+        action: Selector?,
+        target: AnyObject?,
         keyEquivalent: String = ""
     ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        item.image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
+        item.target = target
         return item
-    }
-
-    private static func enabledImage() -> NSImage? {
-        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGreen])
-        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        return NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Enabled")?
-            .withSymbolConfiguration(size.applying(palette))
-    }
-
-    private static func infoImage() -> NSImage? {
-        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGray])
-        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        return NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Needs attention")?
-            .withSymbolConfiguration(size.applying(palette))
-    }
-
-    private func setLaunchAtLogin(state: LaunchAtLoginState) {
-        // Always render via image; never use NSMenuItem.state to avoid stacking the
-        // macOS-native checkmark on top of our green check.
-        launchAtLoginItem.state = .off
-        switch state {
-        case .enabled:
-            launchAtLoginItem.image = Self.enabledImage()
-            launchAtLoginItem.toolTip = nil
-        case .disabled:
-            launchAtLoginItem.image = nil
-            launchAtLoginItem.toolTip = nil
-        case .requiresApproval:
-            launchAtLoginItem.image = Self.infoImage()
-            launchAtLoginItem.toolTip = "Approve in System Settings → General → Login Items"
-        case .failed(let msg):
-            launchAtLoginItem.image = Self.infoImage()
-            launchAtLoginItem.toolTip = msg
-        }
-    }
-
-    @objc private func toggleLaunchAtLogin() {
-        launchAtLogin.handleClick()
     }
 
     private func updateStatus(_ text: String) {
@@ -733,21 +495,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func openConfigFolder() {
-        let url = URL(fileURLWithPath: (Config.configPath as NSString).deletingLastPathComponent)
-        NSWorkspace.shared.open(url)
-    }
-
-    @objc private func revealErrorLog() {
-        let url = URL(fileURLWithPath: ErrorLog.logPath)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
-        let hasLog = FileManager.default.fileExists(atPath: ErrorLog.logPath)
-        showErrorLogMenuItem?.isEnabled = hasLog
-        launchAtLogin.refresh()
+        // Status text is kept current by updateStatus() as state changes; the
+        // submenus that used to need refreshing here are gone.
     }
 
     @objc private func quitApp() {

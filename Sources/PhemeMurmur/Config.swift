@@ -215,9 +215,32 @@ enum Config {
         return false
     }
 
+    /// Finds the first match of `pattern` that is not on a commented-out line (a line
+    /// whose content, ignoring leading whitespace, starts with `//`). Several of the
+    /// default config template's fields (e.g. "prefix", "silence-threshold") ship
+    /// commented out; a naive whole-file regex would happily match inside the comment
+    /// and "update" a value that stays commented out (and therefore never takes
+    /// effect), silently failing to save. Scanning line-by-line avoids that.
+    private static func firstUncommentedMatch(of pattern: String, in content: String) -> Range<String.Index>? {
+        var searchStart = content.startIndex
+        while searchStart < content.endIndex {
+            let lineEnd = content[searchStart...].firstIndex(of: "\n") ?? content.endIndex
+            let line = content[searchStart..<lineEnd]
+            if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
+                searchStart = lineEnd < content.endIndex ? content.index(after: lineEnd) : lineEnd
+                continue
+            }
+            if let range = line.range(of: pattern, options: .regularExpression) {
+                return range
+            }
+            searchStart = lineEnd < content.endIndex ? content.index(after: lineEnd) : lineEnd
+        }
+        return nil
+    }
+
     /// Writes (or updates) a top-level string field in config.jsonc, preserving all other content.
-    /// Assumes the field exists as a real (uncommented) entry — the default config template
-    /// writes all user-adjustable fields as real entries so this simple regex is sufficient.
+    /// If the field only appears commented out (or not at all), a new real entry is inserted
+    /// right after the opening `{` rather than uncommenting/corrupting the comment.
     private static func saveTopLevelStringField(_ fieldName: String, value: String) {
         guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
 
@@ -228,7 +251,26 @@ enum Config {
 
         let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
         let pattern = "\"\(escapedName)\"\\s*:\\s*\"[^\"]*\""
-        if let range = content.range(of: pattern, options: .regularExpression) {
+        if let range = firstUncommentedMatch(of: pattern, in: content) {
+            content.replaceSubrange(range, with: newEntry)
+        } else if let idx = content.firstIndex(of: "{") {
+            content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
+        }
+
+        try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
+    }
+
+    /// Writes (or updates) a top-level field whose value is not a JSON string
+    /// (booleans, numbers). Same preserve-the-rest-of-the-file approach as
+    /// saveTopLevelStringField, but without quoting the value, and skipping
+    /// commented-out occurrences the same way.
+    private static func saveTopLevelRawField(_ fieldName: String, rawValue: String) {
+        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+
+        let newEntry = "\"\(fieldName)\": \(rawValue)"
+        let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
+        let pattern = "\"\(escapedName)\"\\s*:\\s*[^,\\n}]+"
+        if let range = firstUncommentedMatch(of: pattern, in: content) {
             content.replaceSubrange(range, with: newEntry)
         } else if let idx = content.firstIndex(of: "{") {
             content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
@@ -250,6 +292,21 @@ enum Config {
     /// Writes (or updates) the "active-prompt-template" field in config.jsonc.
     static func saveActivePromptTemplate(_ name: String) {
         saveTopLevelStringField("active-prompt-template", value: name)
+    }
+
+    /// Writes (or updates) the "voice-commands" field in config.jsonc.
+    static func saveVoiceCommands(_ enabled: Bool) {
+        saveTopLevelRawField("voice-commands", rawValue: enabled ? "true" : "false")
+    }
+
+    /// Writes (or updates) the "silence-threshold" field in config.jsonc.
+    static func saveSilenceThreshold(_ value: Double) {
+        saveTopLevelRawField("silence-threshold", rawValue: String(format: "%.4f", value))
+    }
+
+    /// Writes (or updates) the "prefix" field in config.jsonc.
+    static func savePrefix(_ value: String) {
+        saveTopLevelStringField("prefix", value: value)
     }
 
     static func loadConfig() -> ConfigFile? {

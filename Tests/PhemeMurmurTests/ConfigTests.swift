@@ -28,4 +28,14 @@ final class ConfigTests: XCTestCase {
         let cfg = try JSONDecoder().decode(ConfigFile.self, from: data)
         XCTAssertFalse(cfg.resolvedVoiceCommands)
     }
+
+    func testSavedBooleanFieldDecodesBack() throws {
+        let json = """
+        {"providers": {}, "voice-commands": true, "silence-threshold": 0.0250}
+        """
+        let data = try XCTUnwrap(json.data(using: .utf8))
+        let cfg = try JSONDecoder().decode(ConfigFile.self, from: data)
+        XCTAssertTrue(cfg.resolvedVoiceCommands)
+        XCTAssertEqual(try XCTUnwrap(cfg.silenceThreshold), 0.025, accuracy: 0.0001)
+    }
 }
