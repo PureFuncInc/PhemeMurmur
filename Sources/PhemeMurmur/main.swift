@@ -69,6 +69,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             self?.applyHotkeyFromConfig()
             self?.applyGeneralSettingsFromConfig()
         }
+        SettingsWindowController.shared.store.isEditingElsewhere = { [weak self] in
+            self?.onboardingActive ?? false
+        }
         NotificationCenter.default.addObserver(
             forName: .phemeOnboardingReachedTryIt, object: nil, queue: .main
         ) { [weak self] _ in

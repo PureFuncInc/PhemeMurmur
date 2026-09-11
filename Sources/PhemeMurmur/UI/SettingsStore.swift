@@ -70,6 +70,13 @@ final class SettingsStore: ObservableObject {
     /// hotkey change, template change). Set by AppDelegate when it creates the store.
     var onChange: (() -> Void)?
 
+    /// Answers "is another window still editing these shared fields?". Set once by
+    /// AppDelegate, the same wiring shape as `onChange`, and backed by the
+    /// `onboardingActive` flag it already keeps for the hotkey gate. Onboarding and
+    /// settings share one store, so closing settings must not throw away a key the
+    /// user is still typing in onboarding.
+    var isEditingElsewhere: (() -> Bool)?
+
     private let launchAtLogin = LaunchAtLogin()
 
     /// The type of the selected provider, or nil when nothing usable is selected.
@@ -144,10 +151,18 @@ final class SettingsStore: ObservableObject {
     /// Drops edits the user typed but never saved, so an abandoned value neither
     /// lingers on screen as if it were in effect nor gets written out later by a
     /// save of a neighbouring field (`saveGeneral` writes prefix alongside the
-    /// voice-commands toggle). Called when either window closes.
+    /// voice-commands toggle). Unconditional: this is the onboarding window's close,
+    /// which owns the edit it is discarding.
     func discardUnsavedEdits() {
         apiKeyEdit.discard()
         prefixEdit.discard()
+    }
+
+    /// The settings window's close. Same discard, but skipped while another window
+    /// is still editing — the edit is then not this window's to throw away.
+    func discardUnsavedEditsIfIdle() {
+        guard isEditingElsewhere?() != true else { return }
+        discardUnsavedEdits()
     }
 
     func toggleLaunchAtLogin() {

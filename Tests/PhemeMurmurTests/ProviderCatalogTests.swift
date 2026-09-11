@@ -121,4 +121,33 @@ final class ProviderCatalogTests: XCTestCase {
         field.discard()
         XCTAssertEqual(field.value, "on-disk")
     }
+    // MARK: - Who owns the edit when two windows share one store
+
+    func testSettingsCloseKeepsTheEditWhileOnboardingIsStillOpen() {
+        let store = SettingsStore()
+        store.isEditingElsewhere = { true }
+        store.apiKey = "sk-half-typed"
+
+        store.discardUnsavedEditsIfIdle()
+        XCTAssertEqual(store.apiKey, "sk-half-typed",
+                       "the settings window must not discard onboarding's in-progress edit")
+    }
+
+    func testSettingsCloseDiscardsTheEditWhenOnboardingIsNotOpen() {
+        let store = SettingsStore()
+        store.isEditingElsewhere = { false }
+        store.apiKey = "sk-half-typed"
+
+        store.discardUnsavedEditsIfIdle()
+        XCTAssertNotEqual(store.apiKey, "sk-half-typed")
+    }
+
+    func testOnboardingCloseDiscardsItsOwnEditUnconditionally() {
+        let store = SettingsStore()
+        store.isEditingElsewhere = { true }
+        store.apiKey = "sk-half-typed"
+
+        store.discardUnsavedEdits()
+        XCTAssertNotEqual(store.apiKey, "sk-half-typed")
+    }
 }

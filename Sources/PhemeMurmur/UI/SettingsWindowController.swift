@@ -44,8 +44,10 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     /// Closing the window abandons whatever was typed but not submitted; keeping
     /// it would show a stale value next time and could be written to disk by an
-    /// unrelated save (`saveGeneral` persists the prefix field).
+    /// unrelated save (`saveGeneral` persists the prefix field). The store skips
+    /// the discard while onboarding is still on screen, since the two windows share
+    /// it and the edit in flight may be onboarding's.
     func windowWillClose(_ notification: Notification) {
-        store.discardUnsavedEdits()
+        store.discardUnsavedEditsIfIdle()
     }
 }
