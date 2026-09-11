@@ -17,6 +17,9 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
 
     private var window: NSWindow?
     private var onDismiss: (() -> Void)?
+    /// True only when the user pressed 完成 on the last page. Closing early with
+    /// the red button leaves onboarding pending so it shows again next launch.
+    private var didFinish = false
 
     func showIfNeeded(onDismiss: @escaping () -> Void) {
         guard OnboardingWindow.needsOnboarding else {
@@ -51,15 +54,26 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         NSApp.activate(ignoringOtherApps: true)
     }
 
+    /// Called when the user finishes the flow. Teardown itself happens in
+    /// `windowWillClose`, which is the one path both the finish button and the
+    /// red close button go through.
     private func dismiss() {
-        OnboardingWindow.markOnboardingComplete()
+        didFinish = true
         window?.close()
-        window = nil
-        onDismiss?()
     }
 
     func windowWillClose(_ notification: Notification) {
-        OnboardingWindow.markOnboardingComplete()
+        if didFinish { OnboardingWindow.markOnboardingComplete() }
+
+        // Release the window and its SwiftUI content on both close paths. With
+        // isReleasedWhenClosed == false, leaving them referenced kept the whole
+        // NSWindow -> NSHostingView -> OnboardingView chain — and its 1 Hz
+        // accessibility poll timer — alive for the rest of the app's lifetime.
+        let closing = window
+        closing?.delegate = nil
+        window = nil
+        DispatchQueue.main.async { closing?.contentView = NSView() }
+
         onDismiss?()
         onDismiss = nil
     }
