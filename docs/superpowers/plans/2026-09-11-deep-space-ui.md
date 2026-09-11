@@ -676,7 +676,8 @@ final class HUDPhaseTests: XCTestCase {
         let recording = HUDPhase.recording(elapsed: 3).presentation
         let p = HUDPhase.transcribing(provider: "OpenAI").presentation
         XCTAssertEqual(p.capsuleText, "TRANSCRIBING · OPENAI")
-        XCTAssertGreaterThan(p.ringSpeed, recording.ringSpeed)
+        // ringSpeed is seconds per rotation, so faster means a smaller value.
+        XCTAssertLessThan(p.ringSpeed, recording.ringSpeed)
         XCTAssertNil(p.autoDismissAfter)
     }
 
@@ -828,6 +829,8 @@ struct NebulaHUDView: View {
     let phase: HUDPhase
     /// One value per beam, 0...1. All zeros renders a calm idle corona.
     let levels: [Float]
+    /// Onboarding reuses the core as decoration and hides the status capsule.
+    var showsCapsule: Bool = true
 
     private let beamCount = 15
     private let systemSize: CGFloat = 150
@@ -846,7 +849,7 @@ struct NebulaHUDView: View {
             }
             .frame(width: systemSize, height: systemSize)
 
-            capsule
+            if showsCapsule { capsule }
         }
         .padding(20)
         .onAppear {
@@ -1997,7 +2000,8 @@ struct OnboardingView: View {
         VStack(spacing: 18) {
             Spacer()
             NebulaHUDView(phase: .transcribing(provider: ""),
-                          levels: Array(repeating: 0, count: 15))
+                          levels: Array(repeating: 0, count: 15),
+                          showsCapsule: false)
                 .scaleEffect(0.45)
                 .frame(height: 80)
 

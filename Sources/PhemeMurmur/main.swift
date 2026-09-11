@@ -4,29 +4,44 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
-    private var promptMenuItem: NSMenuItem!
-    private var promptSubmenu: NSMenu!
-    private var providerMenuItem: NSMenuItem!
-    private var providerSubmenu: NSMenu!
-    private var hotkeyMenuItem: NSMenuItem!
-    private var hotkeySubmenu: NSMenu!
-    private var configLogsMenuItem: NSMenuItem!
-    private var configLogsSubmenu: NSMenu!
-    private var showErrorLogMenuItem: NSMenuItem!
-    private var launchAtLoginItem: NSMenuItem!
     private var currentHotkey: HotkeyKey = .rightShift
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
     private let onboarding = OnboardingWindow()
-    private let launchAtLogin = LaunchAtLogin()
     private var providers: [String: TranscriptionProvider] = [:]
+    /// Provider *types*, kept alongside `providers` because `FallbackProvider`
+    /// erases them and the live preview only applies to Apple's on-device engine.
+    private var providerTypes: [String: ProviderType] = [:]
     private var activeProviderName: String = ""
     private var prefix: String?
     private var voiceCommandsEnabled: Bool = false
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
     private var accessibilityPollTimer: Timer?
+    private let hud = RecordingHUDController()
+    private var recordingStartedAt: Date?
+    private var hudTickTimer: Timer?
+    /// The in-flight transcription, so Esc can cancel it. Otherwise a stalled
+    /// network leaves the click-through HUD on screen until URLSession's 60 s
+    /// default timeout.
+    private var transcriptionTask: Task<Void, Never>?
+    /// Live on-device recognition preview for the HUD. Only ever non-nil while
+    /// recording with the Apple provider on macOS 26+. Typed as `AnyObject` so
+    /// the stored property itself needs no availability annotation.
+    private var liveTranscriber: AnyObject?
+
+    /// True from the moment the onboarding window opens until it closes
+    /// (finish button or the red close button — `windowWillClose` fires on
+    /// both). Used together with `onboardingReachedTryIt` to gate the hotkey.
+    private var onboardingActive = false
+    /// True once onboarding reaches its final page, which deliberately wants
+    /// the hotkey to work.
+    private var onboardingReachedTryIt = false
+
+    private var hotkeyBlockedByOnboarding: Bool {
+        OnboardingFlow.hotkeyBlocked(onboardingActive: onboardingActive, reachedTryIt: onboardingReachedTryIt)
+    }
 
     private var activeProvider: TranscriptionProvider? {
         providers[activeProviderName]
@@ -43,8 +58,31 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.createDefaultConfigIfNeeded()
         installEditMenu()
 
+        // setupApp() must run before the onboarding window shows: its "try it"
+        // page asks the user to record once, which only works if the hotkey
+        // monitor and providers it wires up are already live.
+        wireLaunchObservers()
+        setupApp()
+
+        onboardingActive = true
         onboarding.showIfNeeded { [weak self] in
-            self?.setupApp()
+            self?.onboardingActive = false
+        }
+    }
+
+    private func wireLaunchObservers() {
+        SettingsWindowController.shared.store.onChange = { [weak self] in
+            self?.reloadProvidersFromConfig()
+            self?.applyHotkeyFromConfig()
+            self?.applyGeneralSettingsFromConfig()
+        }
+        SettingsWindowController.shared.store.isEditingElsewhere = { [weak self] in
+            self?.onboardingActive ?? false
+        }
+        NotificationCenter.default.addObserver(
+            forName: .phemeOnboardingReachedTryIt, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.onboardingReachedTryIt = true
         }
     }
 
@@ -70,80 +108,26 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateIcon()
 
         statusMenu = NSMenu()
-        statusMenu.autoenablesItems = false
+        statusMenu.delegate = self
 
-        statusMenu.addItem(Self.makeMenuItem(
-            title: "About PhemeMurmur",
-            systemImage: "info.circle",
-            action: #selector(showAboutPanel)
-        ))
-        statusMenu.addItem(NSMenuItem.separator())
-
-        statusMenuItem = Self.makeMenuItem(title: "Status: Idle", systemImage: "waveform")
+        statusMenuItem = NSMenuItem(title: "Status: idle", action: nil, keyEquivalent: "")
         statusMenuItem.isEnabled = false
         statusMenu.addItem(statusMenuItem)
 
         statusMenu.addItem(NSMenuItem.separator())
-
-        providerSubmenu = NSMenu()
-        providerMenuItem = Self.makeMenuItem(title: "Provider", systemImage: "cloud")
-        statusMenu.addItem(providerMenuItem)
-        statusMenu.setSubmenu(providerSubmenu, for: providerMenuItem)
-
-        promptSubmenu = NSMenu()
-        promptMenuItem = Self.makeMenuItem(title: "Prompt", systemImage: "text.bubble")
-        statusMenu.addItem(promptMenuItem)
-        statusMenu.setSubmenu(promptSubmenu, for: promptMenuItem)
-
-        hotkeySubmenu = NSMenu()
-        hotkeyMenuItem = Self.makeMenuItem(title: "Hotkey", systemImage: "keyboard")
-        statusMenu.addItem(hotkeyMenuItem)
-        statusMenu.setSubmenu(hotkeySubmenu, for: hotkeyMenuItem)
-
+        statusMenu.addItem(Self.makeMenuItem(title: "設定…",
+                                             action: #selector(openSettings),
+                                             target: self,
+                                             keyEquivalent: ","))
         statusMenu.addItem(NSMenuItem.separator())
-
-        configLogsSubmenu = NSMenu()
-        configLogsMenuItem = Self.makeMenuItem(title: "Config & Logs", systemImage: "folder")
-        statusMenu.addItem(configLogsMenuItem)
-        statusMenu.setSubmenu(configLogsSubmenu, for: configLogsMenuItem)
-
-        configLogsSubmenu.addItem(Self.makeMenuItem(
-            title: "Open Config Folder",
-            systemImage: "folder",
-            action: #selector(openConfigFolder)
-        ))
-
-        showErrorLogMenuItem = Self.makeMenuItem(
-            title: "Show Error Log",
-            systemImage: "doc.text.magnifyingglass",
-            action: #selector(revealErrorLog)
-        )
-        configLogsSubmenu.addItem(showErrorLogMenuItem)
-
-        statusMenu.addItem(NSMenuItem.separator())
-
-        launchAtLoginItem = NSMenuItem(
-            title: "Launch at Login",
-            action: #selector(toggleLaunchAtLogin),
-            keyEquivalent: ""
-        )
-        statusMenu.addItem(launchAtLoginItem)
-
-        statusMenu.addItem(NSMenuItem.separator())
-
-        statusMenu.addItem(Self.makeMenuItem(
-            title: "Quit",
-            systemImage: "power",
-            action: #selector(quitApp),
-            keyEquivalent: "q"
-        ))
-        statusMenu.delegate = self
+        statusMenu.addItem(Self.makeMenuItem(title: "關於 PhemeMurmur",
+                                             action: #selector(showAboutPanel),
+                                             target: self))
+        statusMenu.addItem(Self.makeMenuItem(title: "結束",
+                                             action: #selector(quitApp),
+                                             target: self,
+                                             keyEquivalent: "q"))
         statusItem.menu = statusMenu
-
-        launchAtLogin.onStateChange = { [weak self] state in
-            self?.setLaunchAtLogin(state: state)
-        }
-        setLaunchAtLogin(state: launchAtLogin.state)
 
         // Load config
         if let config = Config.loadConfig() {
@@ -151,11 +135,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for (name, entry) in entries {
                 if let provider = Self.makeProvider(for: entry) {
                     providers[name] = provider
+                    providerTypes[name] = entry.type
                 } else {
                     print("Skipped provider \(name): unavailable on this macOS version")
                 }
             }
-            Self.injectBuiltInProvidersIfNeeded(into: &providers)
+            Self.injectBuiltInProvidersIfNeeded(into: &providers, types: &providerTypes)
             if let active = config.resolvedActiveProvider, providers[active] != nil {
                 activeProviderName = active
             } else if !providers.isEmpty {
@@ -187,9 +172,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Error: \(Self.truncate("Invalid config syntax"))")
             showErrorIcon(persistent: true)
         }
-        rebuildProviderSubmenu()
-        rebuildPromptSubmenu()
-        rebuildHotkeySubmenu()
 
         // Setup hotkey
         hotkeyManager.onToggle = { [weak self] in
@@ -213,7 +195,39 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
     }
 
+    /// Whether this recording should run the live text preview: Apple's
+    /// on-device provider on an OS that has the streaming Speech API.
+    private var shouldRunLivePreview: Bool {
+        LivePreviewPolicy.shouldPreview(
+            activeProviderType: providerTypes[activeProviderName],
+            osSupportsLiveTranscription: ProviderCatalog.appleAvailableOnThisSystem
+        )
+    }
+
+    private func startLiveTranscriptionIfSupported() {
+        guard shouldRunLivePreview, #available(macOS 26.0, *) else { return }
+        let transcriber = LiveSpeechTranscriber { [weak self] text in
+            self?.hud.update(liveText: text)
+        }
+        liveTranscriber = transcriber
+        transcriber.start(language: promptTemplates[activeTemplateName]?.language)
+        audioRecorder.onBuffer = { [weak transcriber] buffer in
+            transcriber?.feed(buffer)
+        }
+    }
+
+    /// Detaches the audio tap consumer and shuts the analyzer down. Idempotent,
+    /// so every recording end path can call it unconditionally.
+    private func stopLiveTranscription() {
+        audioRecorder.onBuffer = nil
+        if #available(macOS 26.0, *), let transcriber = liveTranscriber as? LiveSpeechTranscriber {
+            transcriber.stop()
+        }
+        liveTranscriber = nil
+    }
+
     private func handleToggle() {
+        guard !hotkeyBlockedByOnboarding else { return }
         switch state {
         case .idle:
             startRecording()
@@ -225,8 +239,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleCancel() {
-        guard state == .recording else { return }
+        switch state {
+        case .idle:
+            return
+        case .recording:
+            cancelRecording()
+        case .transcribing:
+            cancelTranscription()
+        }
+    }
 
+    private func cancelRecording() {
         // Stop recording and discard the audio
         if case .success(let fileURL) = audioRecorder.stopRecording() {
             try? FileManager.default.removeItem(at: fileURL)
@@ -236,6 +259,27 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatus("Idle")
         NSSound(named: "Funk")?.play()
         print("⛔ Recording cancelled.")
+
+        hudTickTimer?.invalidate()
+        hudTickTimer = nil
+        recordingStartedAt = nil
+        audioRecorder.onLevel = nil
+        stopLiveTranscription()
+        hud.hide()
+    }
+
+    /// Esc during transcription: cancels the request (URLSession's async API is
+    /// cancellation-aware) and takes the HUD down immediately, so a stalled
+    /// network can never strand it on screen.
+    private func cancelTranscription() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        state = .idle
+        updateStatus("Idle")
+        NSSound(named: "Funk")?.play()
+        print("⛔ Transcription cancelled.")
+        stopLiveTranscription()
+        hud.hide()
     }
 
     private func startHotkeyMonitor() {
@@ -271,6 +315,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Recording...")
             NSSound(named: "Glass")?.play()
             print("🎙 Recording... Press Right Shift to stop, Esc to cancel.")
+
+            recordingStartedAt = Date()
+            audioRecorder.onLevel = { [weak self] levels in
+                self?.hud.update(levels: levels)
+            }
+            startLiveTranscriptionIfSupported()
+            hud.show(.recording(elapsed: 0))
+            hudTickTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self, let started = self.recordingStartedAt else { return }
+                self.hud.show(.recording(elapsed: Date().timeIntervalSince(started)))
+            }
         } catch {
             print("Failed to start recording: \(error)")
             ErrorLog.append(context: "recording-start", message: "\(error)")
@@ -280,6 +335,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func stopRecordingAndTranscribe() {
+        hudTickTimer?.invalidate()
+        hudTickTimer = nil
+        recordingStartedAt = nil
+        audioRecorder.onLevel = nil
+        // Stop feeding the analyzer here, before every early return below: the
+        // preview's job ends the moment the microphone does.
+        stopLiveTranscription()
+
         let result = audioRecorder.stopRecording()
         let fileURL: URL
         switch result {
@@ -289,18 +352,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             state = .idle
             updateStatus("Idle")
             print("No audio captured.")
+            hud.hide()
             return
         case .tooShort(let duration):
             state = .idle
             updateStatus("Too short (\(String(format: "%.1f", duration))s)")
             showErrorIcon()
             print("Recording too short (\(String(format: "%.1f", duration))s).")
+            hud.hide()
             return
         case .tooQuiet(let rms):
             state = .idle
             updateStatus("Too quiet (RMS \(String(format: "%.3f", rms)))")
             showErrorIcon()
             print("Recording too quiet (RMS \(String(format: "%.4f", rms))).")
+            hud.hide()
             return
         }
 
@@ -312,24 +378,28 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Error: \(Self.truncate("No API key"))")
             showErrorIcon(persistent: true)
             print("Cannot transcribe: No active provider configured.")
+            hud.show(.failed(message: "尚未設定轉錄服務"))
             return
         }
 
         state = .transcribing
         updateStatus("Transcribing...")
         print("⏹ Stopped. Transcribing via \(self.activeProviderName)...")
+        hud.show(.transcribing(provider: activeProviderName))
 
-        Task {
+        transcriptionTask = Task {
             do {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
                 let finalText = try await provider.transcribe(fileURL: fileURL, language: template?.language, prompt: template?.prompt)
                 await MainActor.run {
+                    // Esc already reset the UI; never paste after a cancel.
+                    guard !Task.isCancelled else { return }
                     if finalText == "__SILENCE__" {
                         print("Silence detected by model, skipping paste.")
                         self.state = .idle
                         self.updateStatus("Idle")
-                        self.refreshProviderLabel()
+                        self.hud.hide()
                         return
                     }
                     let processed: String
@@ -343,16 +413,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     PasteService.pasteText(output)
                     self.state = .idle
                     self.updateStatus("Idle")
-                    self.refreshProviderLabel()
+                    self.hud.show(.done)
+                    NotificationCenter.default.post(name: .phemeDidTranscribeOnce, object: nil)
                 }
             } catch {
                 await MainActor.run {
+                    guard !Task.isCancelled else { return }
                     print("Transcription failed: \(error)")
                     ErrorLog.append(context: "transcribe", message: "\(error)")
                     self.state = .idle
                     self.updateStatus("Error: \(Self.truncate(error.localizedDescription))")
                     self.showErrorIcon()
-                    self.refreshProviderLabel()
+                    self.hud.show(.failed(message: Self.truncate(error.localizedDescription)))
                 }
             }
 
@@ -361,191 +433,64 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func rebuildProviderSubmenu() {
-        providerSubmenu.removeAllItems()
-        for name in providers.keys.sorted() {
-            let item = NSMenuItem(title: name, action: #selector(selectProvider(_:)), keyEquivalent: "")
-            item.representedObject = name
-            item.state = (name == activeProviderName) ? .on : .off
-            providerSubmenu.addItem(item)
-        }
-        if !activeProviderName.isEmpty {
-            providerSubmenu.addItem(NSMenuItem.separator())
-            let setKeyItem = NSMenuItem(
-                title: "Set API Key for \(activeProviderName)…",
-                action: #selector(setAPIKeyForActive),
-                keyEquivalent: ""
-            )
-            providerSubmenu.addItem(setKeyItem)
-        }
-        refreshProviderLabel()
-    }
-
-    private func refreshProviderLabel() {
-        if let provider = activeProvider {
-            let model = Self.displayModelName(provider.modelName)
-            providerMenuItem?.title = "Provider: \(activeProviderName) (\(model))"
-        } else {
-            providerMenuItem?.title = "Provider"
-        }
-    }
-
-    private static func displayModelName(_ model: String) -> String {
-        if let range = model.range(of: "-transcribe") {
-            return String(model[..<range.lowerBound])
-        }
-        if model.hasSuffix("-preview") {
-            return String(model.dropLast("-preview".count))
-        }
-        return model
-    }
-
-    @objc private func selectProvider(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        if let provider = providers[name], !provider.isKeyConfigured {
-            // Warn the user and offer to enter a key. Only switch if the key is saved.
-            let saved = runAPIKeyPrompt(
-                for: name,
-                messageText: "API key not set for \(name)",
-                informativeText: "Enter an API key to start using \(name).",
-                style: .warning
-            )
-            guard saved else {
-                // Restore the checkmark on the current active provider.
-                rebuildProviderSubmenu()
-                return
-            }
-        }
-        activateProvider(name)
-    }
-
-    private func activateProvider(_ name: String) {
-        activeProviderName = name
-        Config.saveActiveProvider(name)
-        rebuildProviderSubmenu()
-        if state == .idle {
-            updateStatus("Idle")
-        }
-        print("Switched provider to: \(name)")
-    }
-
-    @objc private func setAPIKeyForActive() {
-        let name = activeProviderName
-        guard !name.isEmpty else { return }
-        _ = runAPIKeyPrompt(
-            for: name,
-            messageText: "Set API Key for \(name)",
-            informativeText: "The key will be saved to config.jsonc.",
-            style: .informational
-        )
-    }
-
-    /// Shows an API-key input alert for `name`, writes the key to config.jsonc on Save, and reloads
-    /// the provider instance so the new key takes effect immediately. Returns true iff a key was saved.
-    @discardableResult
-    private func runAPIKeyPrompt(
-        for name: String,
-        messageText: String,
-        informativeText: String,
-        style: NSAlert.Style
-    ) -> Bool {
-        let alert = NSAlert()
-        alert.messageText = messageText
-        alert.informativeText = informativeText
-        alert.alertStyle = style
-        alert.addButton(withTitle: "Save")
-        alert.addButton(withTitle: "Cancel")
-
-        let textField = NSSecureTextField(frame: NSRect(x: 0, y: 0, width: 320, height: 24))
-        textField.placeholderString = "API key"
-        alert.accessoryView = textField
-        alert.window.initialFirstResponder = textField
-
-        NSApp.activate(ignoringOtherApps: true)
-        let response = alert.runModal()
-        guard response == .alertFirstButtonReturn else { return false }
-
-        let newKey = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !newKey.isEmpty else { return false }
-
-        if !Config.saveAPIKey(providerName: name, apiKey: newKey) {
-            let err = NSAlert()
-            err.messageText = "Failed to save API key"
-            err.informativeText = "Could not locate provider \"\(name)\" in config.jsonc. Please edit the file manually."
-            err.alertStyle = .warning
-            err.runModal()
-            return false
-        }
-
-        reloadProvidersFromConfig()
-        rebuildProviderSubmenu()
-        print("Updated API key for \(name)")
-        return true
+    @objc private func openSettings() {
+        SettingsWindowController.shared.show()
     }
 
     private func reloadProvidersFromConfig() {
         guard let config = Config.loadConfig() else { return }
         providers.removeAll()
+        providerTypes.removeAll()
         for (n, entry) in config.resolvedProviders {
             if let provider = Self.makeProvider(for: entry) {
                 providers[n] = provider
+                providerTypes[n] = entry.type
             }
         }
-        Self.injectBuiltInProvidersIfNeeded(into: &providers)
-        if providers[activeProviderName] == nil {
+        Self.injectBuiltInProvidersIfNeeded(into: &providers, types: &providerTypes)
+        if let active = config.resolvedActiveProvider, providers[active] != nil {
+            activeProviderName = active
+        } else if providers[activeProviderName] == nil {
             activeProviderName = providers.keys.sorted().first ?? ""
+        }
+    }
+
+    /// Reapplies the hotkey read from config.jsonc to the running hotkey monitor.
+    /// Extracted from the old menu's `selectHotkey(_:)` action.
+    private func applyHotkeyFromConfig() {
+        guard let config = Config.loadConfig() else { return }
+        currentHotkey = config.resolvedHotkey
+        hotkeyManager.key = currentHotkey
+    }
+
+    /// Re-reads prefix / voice-commands / silence-threshold / prompt template settings
+    /// so changes made in the settings window take effect immediately, mirroring the
+    /// config-loading block in `setupApp()`.
+    private func applyGeneralSettingsFromConfig() {
+        guard let config = Config.loadConfig() else { return }
+        prefix = config.prefix
+        voiceCommandsEnabled = config.resolvedVoiceCommands
+        if let threshold = config.silenceThreshold {
+            Config.silenceThreshold = threshold
+        }
+        promptTemplates = config.promptTemplates ?? [:]
+        if let saved = config.activePromptTemplate, promptTemplates[saved] != nil {
+            activeTemplateName = saved
         }
     }
 
     /// Auto-registers built-in providers that don't require any config (currently
     /// only Apple on-device speech on macOS 26+). Users who upgrade from an older
-    /// version still see these in the menu without editing config.jsonc.
-    private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider]) {
-        if #available(macOS 26.0, *), providers["Apple"] == nil {
-            providers["Apple"] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
+    /// version get these without editing config.jsonc; `ProviderCatalog.options`
+    /// mirrors this rule so the settings window lists them too.
+    private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider],
+                                                       types: inout [String: ProviderType]) {
+        if #available(macOS 26.0, *), providers[ProviderCatalog.builtInAppleName] == nil {
+            providers[ProviderCatalog.builtInAppleName] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
                 AppleSpeechProvider(model: model)
             }
+            types[ProviderCatalog.builtInAppleName] = .apple
         }
-    }
-
-    private func rebuildPromptSubmenu() {
-        promptSubmenu.removeAllItems()
-        for name in promptTemplates.keys.sorted() {
-            let item = NSMenuItem(title: name, action: #selector(selectPromptTemplate(_:)), keyEquivalent: "")
-            item.representedObject = name
-            item.state = (name == activeTemplateName) ? .on : .off
-            promptSubmenu.addItem(item)
-        }
-        promptMenuItem?.title = "Prompt: \(activeTemplateName)"
-    }
-
-    @objc private func selectPromptTemplate(_ sender: NSMenuItem) {
-        guard let name = sender.representedObject as? String else { return }
-        activeTemplateName = name
-        Config.saveActivePromptTemplate(name)
-        rebuildPromptSubmenu()
-        print("Switched prompt template to: \(name)")
-    }
-
-    private func rebuildHotkeySubmenu() {
-        hotkeySubmenu.removeAllItems()
-        for key in HotkeyKey.allCases {
-            let item = NSMenuItem(title: key.displayName, action: #selector(selectHotkey(_:)), keyEquivalent: "")
-            item.representedObject = key.rawValue
-            item.state = (key == currentHotkey) ? .on : .off
-            hotkeySubmenu.addItem(item)
-        }
-        hotkeyMenuItem.title = "Hotkey: \(currentHotkey.shortName)"
-    }
-
-    @objc private func selectHotkey(_ sender: NSMenuItem) {
-        guard let raw = sender.representedObject as? String,
-              let key = HotkeyKey(rawValue: raw) else { return }
-        currentHotkey = key
-        hotkeyManager.key = key
-        Config.saveHotkey(key)
-        rebuildHotkeySubmenu()
-        print("Hotkey changed to: \(key.displayName)")
     }
 
     @objc private func showAboutPanel() {
@@ -591,53 +536,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private static func makeMenuItem(
         title: String,
-        systemImage: String,
-        action: Selector? = nil,
+        action: Selector?,
+        target: AnyObject?,
         keyEquivalent: String = ""
     ) -> NSMenuItem {
         let item = NSMenuItem(title: title, action: action, keyEquivalent: keyEquivalent)
-        let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        item.image = NSImage(systemSymbolName: systemImage, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config)
+        item.target = target
         return item
-    }
-
-    private static func enabledImage() -> NSImage? {
-        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGreen])
-        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        return NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Enabled")?
-            .withSymbolConfiguration(size.applying(palette))
-    }
-
-    private static func infoImage() -> NSImage? {
-        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGray])
-        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        return NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Needs attention")?
-            .withSymbolConfiguration(size.applying(palette))
-    }
-
-    private func setLaunchAtLogin(state: LaunchAtLoginState) {
-        // Always render via image; never use NSMenuItem.state to avoid stacking the
-        // macOS-native checkmark on top of our green check.
-        launchAtLoginItem.state = .off
-        switch state {
-        case .enabled:
-            launchAtLoginItem.image = Self.enabledImage()
-            launchAtLoginItem.toolTip = nil
-        case .disabled:
-            launchAtLoginItem.image = nil
-            launchAtLoginItem.toolTip = nil
-        case .requiresApproval:
-            launchAtLoginItem.image = Self.infoImage()
-            launchAtLoginItem.toolTip = "Approve in System Settings → General → Login Items"
-        case .failed(let msg):
-            launchAtLoginItem.image = Self.infoImage()
-            launchAtLoginItem.toolTip = msg
-        }
-    }
-
-    @objc private func toggleLaunchAtLogin() {
-        launchAtLogin.handleClick()
     }
 
     private func updateStatus(_ text: String) {
@@ -657,12 +562,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateIcon() {
         switch state {
         case .idle:
-            setIcon(symbolName: "waveform", color: nil)
+            setWaveformIcon()
         case .recording:
             setIcon(symbolName: "record.circle", color: .systemRed)
         case .transcribing:
             setIcon(symbolName: "text.bubble", color: .systemBlue)
         }
+    }
+
+    private func setWaveformIcon() {
+        guard let button = statusItem?.button else { return }
+        button.image = MenuBarIcon.appIcon() ?? MenuBarIcon.waveformTemplate()
+        button.title = ""
     }
 
     private func showErrorIcon(persistent: Bool = false) {
@@ -695,25 +606,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    @objc private func openConfigFolder() {
-        let url = URL(fileURLWithPath: (Config.configPath as NSString).deletingLastPathComponent)
-        NSWorkspace.shared.open(url)
-    }
-
-    @objc private func revealErrorLog() {
-        let url = URL(fileURLWithPath: ErrorLog.logPath)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
-        let hasLog = FileManager.default.fileExists(atPath: ErrorLog.logPath)
-        showErrorLogMenuItem?.isEnabled = hasLog
-        launchAtLogin.refresh()
+        // Status text is kept current by updateStatus() as state changes; the
+        // submenus that used to need refreshing here are gone.
     }
 
     @objc private func quitApp() {
         accessibilityPollTimer?.invalidate()
+        stopLiveTranscription()
         if audioRecorder.isRecording {
             _ = audioRecorder.stopRecording()
         }

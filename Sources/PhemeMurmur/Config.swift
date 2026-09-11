@@ -30,6 +30,36 @@ extension ProviderType {
     }
 }
 
+extension ProviderType {
+    /// Whether this kind of provider can only work with an API key. Apple's
+    /// recognition runs on-device, so it needs none.
+    var requiresAPIKey: Bool {
+        switch self {
+        case .openai, .gemini: return true
+        case .apple: return false
+        }
+    }
+
+    /// The obviously-fake key shipped in `Config.defaultConfigContent` for this
+    /// type. Treated as "not set" so onboarding does not accept it as real.
+    /// Keep in sync with `defaultConfigContent`.
+    var placeholderAPIKey: String? {
+        switch self {
+        case .openai: return "sk-proj-xxx"
+        case .gemini: return "AIzaxxx"
+        case .apple: return nil
+        }
+    }
+
+    /// True when `apiKey` is good enough to actually use this provider.
+    func hasUsableAPIKey(_ apiKey: String) -> Bool {
+        guard requiresAPIKey else { return true }
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return trimmed != placeholderAPIKey
+    }
+}
+
 struct PostProcessConfig: Decodable {
     let baseURL: String?
     let model: String?
@@ -182,12 +212,10 @@ enum Config {
     static func saveAPIKey(providerName: String, apiKey: String) -> Bool {
         guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return false }
 
-        // JSON-escape the new key so quotes/backslashes don't break the file.
-        let jsonEscaped = apiKey
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+        // JSON-escape the new key so quotes/backslashes/control characters don't
+        // break the file.
         // Also escape $ and \ for the NSRegularExpression replacement template.
-        let templateKey = NSRegularExpression.escapedTemplate(for: jsonEscaped)
+        let templateKey = NSRegularExpression.escapedTemplate(for: jsonEscaped(apiKey))
 
         func replace(pattern: String, in source: inout String) -> Bool {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
@@ -206,7 +234,7 @@ enum Config {
 
         // Try modern `providers` dict first.
         let escapedName = NSRegularExpression.escapedPattern(for: providerName)
-        let providersPattern = "(\"\(escapedName)\"\\s*:\\s*\\{[^}]*?\"api-key\"\\s*:\\s*\")[^\"]*(\")"
+        let providersPattern = "(\"\(escapedName)\"\\s*:\\s*\\{[^}]*?\"api-key\"\\s*:\\s*\")\(Self.jsonStringBodyPattern)(\")"
         if replace(pattern: providersPattern, in: &content) {
             try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
             return true
@@ -215,26 +243,168 @@ enum Config {
         return false
     }
 
-    /// Writes (or updates) a top-level string field in config.jsonc, preserving all other content.
-    /// Assumes the field exists as a real (uncommented) entry — the default config template
-    /// writes all user-adjustable fields as real entries so this simple regex is sufficient.
-    private static func saveTopLevelStringField(_ fieldName: String, value: String) {
-        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+    /// Regex body of a JSON string literal *without* its surrounding quotes:
+    /// either a character that is neither a quote nor a backslash, or a backslash
+    /// escape (`\\"`, `\\\\`, `\\n`, …). A naive `[^"]*` stops at the first `\\"`
+    /// inside the value, so re-saving a value that contains a quote truncates the
+    /// match in the middle of the literal and corrupts the file.
+    static let jsonStringBodyPattern = "(?:[^\"\\\\]|\\\\.)*"
 
-        let jsonEscapedValue = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let newEntry = "\"\(fieldName)\": \"\(jsonEscapedValue)\""
+    /// Regex for a non-string JSON scalar (boolean, null, number). Deliberately
+    /// exact rather than "everything up to the next comma/newline/brace", which
+    /// would swallow a trailing `// comment` on the same line.
+    static let jsonScalarPattern = "(?:true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)"
+
+    /// JSON-escapes a value for writing into config.jsonc. Besides the obvious
+    /// backslash and quote, every character below 0x20 must be escaped: a raw tab
+    /// or newline inside a string literal is invalid JSON, so the file would fail
+    /// to parse at next launch and the user would lose every provider and key.
+    static func jsonEscaped(_ value: String) -> String {
+        var out = ""
+        out.reserveCapacity(value.unicodeScalars.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            case "\u{08}": out += "\\b"
+            case "\u{0C}": out += "\\f"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            default:
+                if scalar.value < 0x20 {
+                    out += String(format: "\\u%04x", scalar.value)
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return out
+    }
+
+    /// Returns the character ranges covered by `//` line comments and `/* */` block
+    /// comments in `source`, using the same string-literal-aware scan as `stripComments`
+    /// (so a `//` or `/*` inside a quoted string is not mistaken for a comment).
+    private static func commentRanges(in source: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var i = source.startIndex
+        var inString = false
+
+        while i < source.endIndex {
+            let c = source[i]
+            let next = source.index(after: i)
+
+            if inString {
+                if c == "\\" && next < source.endIndex {
+                    i = source.index(after: next)
+                } else {
+                    if c == "\"" { inString = false }
+                    i = next
+                }
+            } else if c == "\"" {
+                inString = true
+                i = next
+            } else if c == "/" && next < source.endIndex {
+                let n = source[next]
+                if n == "/" {
+                    let start = i
+                    var j = source.index(after: next)
+                    while j < source.endIndex && source[j] != "\n" { j = source.index(after: j) }
+                    ranges.append(start..<j)
+                    i = j
+                } else if n == "*" {
+                    let start = i
+                    var j = source.index(after: next)
+                    var closed = false
+                    while j < source.endIndex {
+                        let jNext = source.index(after: j)
+                        if source[j] == "*" && jNext < source.endIndex && source[jNext] == "/" {
+                            i = source.index(after: jNext)
+                            closed = true
+                            break
+                        }
+                        j = source.index(after: j)
+                    }
+                    if !closed { i = source.endIndex }
+                    ranges.append(start..<i)
+                } else {
+                    i = next
+                }
+            } else {
+                i = next
+            }
+        }
+        return ranges
+    }
+
+    /// Finds the first match of `pattern` that does not fall inside a `//` or `/* */`
+    /// comment. Several of the default config template's fields (e.g. "prefix",
+    /// "silence-threshold") ship commented out; a naive whole-file regex would happily
+    /// match inside the comment and "update" a value that stays commented out (and
+    /// therefore never takes effect), silently failing to save.
+    private static func firstUncommentedMatch(of pattern: String, in content: String) -> Range<String.Index>? {
+        let commented = commentRanges(in: content)
+        var searchRange = content.startIndex..<content.endIndex
+        while let range = content.range(of: pattern, options: .regularExpression, range: searchRange) {
+            if !commented.contains(where: { $0.overlaps(range) }) {
+                return range
+            }
+            searchRange = range.upperBound..<content.endIndex
+        }
+        return nil
+    }
+
+    /// Pure string transform behind `saveTopLevelStringField`: replaces the first
+    /// uncommented occurrence of `"fieldName": "..."` with `newEntry`, or inserts
+    /// `newEntry` as a new real entry right after the opening `{` if the field only
+    /// appears commented out (or not at all). Split out from the file I/O so it can be
+    /// unit tested without touching `configPath`.
+    static func upsertStringField(_ fieldName: String, value: String, in content: String) -> String {
+        var content = content
+        let newEntry = "\"\(fieldName)\": \"\(jsonEscaped(value))\""
 
         let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
-        let pattern = "\"\(escapedName)\"\\s*:\\s*\"[^\"]*\""
-        if let range = content.range(of: pattern, options: .regularExpression) {
+        let pattern = "\"\(escapedName)\"\\s*:\\s*\"\(jsonStringBodyPattern)\""
+        if let range = firstUncommentedMatch(of: pattern, in: content) {
             content.replaceSubrange(range, with: newEntry)
         } else if let idx = content.firstIndex(of: "{") {
             content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
         }
+        return content
+    }
 
-        try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
+    /// Writes (or updates) a top-level string field in config.jsonc, preserving all other content.
+    /// If the field only appears commented out (or not at all), a new real entry is inserted
+    /// right after the opening `{` rather than uncommenting/corrupting the comment.
+    private static func saveTopLevelStringField(_ fieldName: String, value: String) {
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+        let updated = upsertStringField(fieldName, value: value, in: content)
+        try? updated.write(toFile: configPath, atomically: true, encoding: .utf8)
+    }
+
+    /// Pure string transform behind `saveTopLevelRawField` — see `upsertStringField`.
+    /// Same preserve-the-rest-of-the-file approach, but without quoting the value.
+    static func upsertRawField(_ fieldName: String, rawValue: String, in content: String) -> String {
+        var content = content
+        let newEntry = "\"\(fieldName)\": \(rawValue)"
+        let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
+        let pattern = "\"\(escapedName)\"\\s*:\\s*\(jsonScalarPattern)"
+        if let range = firstUncommentedMatch(of: pattern, in: content) {
+            content.replaceSubrange(range, with: newEntry)
+        } else if let idx = content.firstIndex(of: "{") {
+            content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
+        }
+        return content
+    }
+
+    /// Writes (or updates) a top-level field whose value is not a JSON string
+    /// (booleans, numbers). Same preserve-the-rest-of-the-file approach as
+    /// saveTopLevelStringField, but without quoting the value, and skipping
+    /// commented-out occurrences the same way.
+    private static func saveTopLevelRawField(_ fieldName: String, rawValue: String) {
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+        let updated = upsertRawField(fieldName, rawValue: rawValue, in: content)
+        try? updated.write(toFile: configPath, atomically: true, encoding: .utf8)
     }
 
     /// Writes (or updates) the "hotkey" field in config.jsonc, preserving all other content.
@@ -252,6 +422,21 @@ enum Config {
         saveTopLevelStringField("active-prompt-template", value: name)
     }
 
+    /// Writes (or updates) the "voice-commands" field in config.jsonc.
+    static func saveVoiceCommands(_ enabled: Bool) {
+        saveTopLevelRawField("voice-commands", rawValue: enabled ? "true" : "false")
+    }
+
+    /// Writes (or updates) the "silence-threshold" field in config.jsonc.
+    static func saveSilenceThreshold(_ value: Double) {
+        saveTopLevelRawField("silence-threshold", rawValue: String(format: "%.4f", value))
+    }
+
+    /// Writes (or updates) the "prefix" field in config.jsonc.
+    static func savePrefix(_ value: String) {
+        saveTopLevelStringField("prefix", value: value)
+    }
+
     static func loadConfig() -> ConfigFile? {
         guard let data = FileManager.default.contents(atPath: configPath),
               let json = String(data: data, encoding: .utf8) else {
@@ -262,59 +447,22 @@ enum Config {
         return try? JSONDecoder().decode(ConfigFile.self, from: strippedData)
     }
 
-    // Strips // line comments and /* */ block comments, respecting string literals.
-    private static func stripComments(from source: String) -> String {
+    /// Strips `//` line comments and `/* */` block comments, respecting string literals.
+    /// Built directly on `commentRanges`, the single scanner that knows the comment
+    /// grammar — this is just "the source with every comment range cut out". Comment
+    /// text (including any newlines embedded in a block comment) is removed rather than
+    /// replaced with whitespace: nothing downstream reports line/column numbers from the
+    /// stripped text (`loadConfig` discards `JSONDecoder` errors via `try?`), so there's
+    /// no line-number accounting to preserve, and this matches the previous
+    /// implementation's behaviour exactly for well-formed input.
+    static func stripComments(from source: String) -> String {
         var result = ""
-        var i = source.startIndex
-        var inString = false
-
-        while i < source.endIndex {
-            let c = source[i]
-            let next = source.index(after: i)
-
-            if inString {
-                result.append(c)
-                if c == "\\" && next < source.endIndex {
-                    // Escaped character — keep both chars, skip ahead
-                    result.append(source[next])
-                    i = source.index(after: next)
-                } else {
-                    if c == "\"" { inString = false }
-                    i = next
-                }
-            } else {
-                if c == "\"" {
-                    inString = true
-                    result.append(c)
-                    i = next
-                } else if c == "/" && next < source.endIndex {
-                    let n = source[next]
-                    if n == "/" {
-                        // Line comment — skip to end of line
-                        var j = source.index(after: next)
-                        while j < source.endIndex && source[j] != "\n" { j = source.index(after: j) }
-                        i = j
-                    } else if n == "*" {
-                        // Block comment — skip to */
-                        var j = source.index(after: next)
-                        while j < source.endIndex {
-                            let jNext = source.index(after: j)
-                            if source[j] == "*" && jNext < source.endIndex && source[jNext] == "/" {
-                                i = source.index(after: jNext)
-                                break
-                            }
-                            j = source.index(after: j)
-                        }
-                    } else {
-                        result.append(c)
-                        i = next
-                    }
-                } else {
-                    result.append(c)
-                    i = next
-                }
-            }
+        var cursor = source.startIndex
+        for range in commentRanges(in: source) {
+            result += source[cursor..<range.lowerBound]
+            cursor = range.upperBound
         }
+        result += source[cursor...]
         return result
     }
 }

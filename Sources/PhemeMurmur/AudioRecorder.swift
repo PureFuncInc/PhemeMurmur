@@ -7,10 +7,59 @@ final class AudioRecorder {
     private let lock = NSLock()
     private(set) var isRecording = false
 
+    /// Emits `beamCount` amplitude values on the main thread while recording,
+    /// throttled to roughly 30Hz. Nil when nothing is observing.
+    ///
+    /// Backed by `_onLevel`, guarded by `lock`: assigned from the main thread
+    /// (Task 4's HUD) and read from the realtime audio tap, so both sides
+    /// must go through the lock to avoid a data race on the closure reference.
+    var onLevel: (([Float]) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onLevel
+        }
+        set {
+            lock.lock()
+            _onLevel = newValue
+            lock.unlock()
+        }
+    }
+    private var _onLevel: (([Float]) -> Void)?
+
+    /// Hands every converted 16 kHz mono Float32 buffer to a live consumer (the
+    /// on-device live transcription preview). Nil when nobody is listening, in
+    /// which case the tap does no extra work at all.
+    ///
+    /// Same contract as `onLevel`: lock-guarded because it is assigned from the
+    /// main thread and read from the realtime tap. Unlike `onLevel` it is invoked
+    /// synchronously on the audio thread — the consumer must only enqueue, never
+    /// block — because buffers must stay in order and hopping to the main thread
+    /// per buffer would be pointless overhead.
+    var onBuffer: ((AVAudioPCMBuffer) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onBuffer
+        }
+        set {
+            lock.lock()
+            _onBuffer = newValue
+            lock.unlock()
+        }
+    }
+    private var _onBuffer: ((AVAudioPCMBuffer) -> Void)?
+
+    private static let beamCount = 15
+    private static let levelInterval: TimeInterval = 1.0 / 30.0
+    private var lastLevelEmit: TimeInterval = 0
+
     func startRecording() throws {
         lock.lock()
         buffers.removeAll()
         lock.unlock()
+
+        lastLevelEmit = 0
 
         let inputNode = engine.inputNode
         let hardwareFormat = inputNode.outputFormat(forBus: 0)
@@ -48,6 +97,21 @@ final class AudioRecorder {
                 self.lock.lock()
                 self.buffers.append(convertedBuffer)
                 self.lock.unlock()
+
+                if let onBuffer = self.onBuffer {
+                    onBuffer(convertedBuffer)
+                }
+
+                guard let onLevel = self.onLevel else { return }
+                let now = CFAbsoluteTimeGetCurrent()
+                guard now - self.lastLevelEmit >= Self.levelInterval else { return }
+                self.lastLevelEmit = now
+
+                guard let channel = convertedBuffer.floatChannelData?[0] else { return }
+                let samples = Array(UnsafeBufferPointer(start: channel,
+                                                        count: Int(convertedBuffer.frameLength)))
+                let levels = AudioLevelMeter.segmentLevels(samples, segments: Self.beamCount)
+                DispatchQueue.main.async { onLevel(levels) }
             }
         }
 
