@@ -9,7 +9,23 @@ final class AudioRecorder {
 
     /// Emits `beamCount` amplitude values on the main thread while recording,
     /// throttled to roughly 30Hz. Nil when nothing is observing.
-    var onLevel: (([Float]) -> Void)?
+    ///
+    /// Backed by `_onLevel`, guarded by `lock`: assigned from the main thread
+    /// (Task 4's HUD) and read from the realtime audio tap, so both sides
+    /// must go through the lock to avoid a data race on the closure reference.
+    var onLevel: (([Float]) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return _onLevel
+        }
+        set {
+            lock.lock()
+            _onLevel = newValue
+            lock.unlock()
+        }
+    }
+    private var _onLevel: (([Float]) -> Void)?
 
     private static let beamCount = 15
     private static let levelInterval: TimeInterval = 1.0 / 30.0
@@ -59,7 +75,7 @@ final class AudioRecorder {
                 self.buffers.append(convertedBuffer)
                 self.lock.unlock()
 
-                guard self.onLevel != nil else { return }
+                guard let onLevel = self.onLevel else { return }
                 let now = CFAbsoluteTimeGetCurrent()
                 guard now - self.lastLevelEmit >= Self.levelInterval else { return }
                 self.lastLevelEmit = now
@@ -68,7 +84,7 @@ final class AudioRecorder {
                 let samples = Array(UnsafeBufferPointer(start: channel,
                                                         count: Int(convertedBuffer.frameLength)))
                 let levels = AudioLevelMeter.segmentLevels(samples, segments: Self.beamCount)
-                DispatchQueue.main.async { self.onLevel?(levels) }
+                DispatchQueue.main.async { onLevel(levels) }
             }
         }
 
