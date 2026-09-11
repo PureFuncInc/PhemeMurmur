@@ -80,7 +80,7 @@ menu bar 選單同步瘦身為：狀態列 → 開始／停止錄音 → 設定�
 組成（SwiftUI `Canvas` 單一元件 `NebulaHUDView`）：
 
 - **星雲球核心** — 徑向漸層球體，內部一層旋轉的 conic 極光；音量驅動脹縮與亮度。
-- **日冕光束** — 15 道自球體向外放射的模糊光束，各自由對應頻段的即時音量驅動長度與透明度；無硬邊。
+- **日冕光束** — 15 道自球體向外放射的模糊光束，各自由一段即時音訊的 RMS 驅動長度與透明度；無硬邊。（採時間分段 RMS 而非頻譜分析，避免引入 FFT。）
 - **軌道環** — 一道反向緩慢旋轉的細環。
 - **狀態膠囊** — 球體下方一枚獨立的小圓角膠囊：`● LISTENING · 0:07 · ESC`。
 
@@ -95,7 +95,7 @@ menu bar 選單同步瘦身為：狀態列 → 開始／停止錄音 → 設定�
 
 進出動畫：由下往上滑入約 0.22s 帶輕微彈性，離場淡出。
 
-**音量來源**：`AudioRecorder` 既有的 `AVAudioEngine` tap 已逐 buffer 取得 PCM，新增一個 `onLevel: ([Float]) -> Void` callback，在 tap 內計算分頻段 RMS 後回拋（節流至 ~30Hz）。錄音與轉檔路徑不受影響。
+**音量來源**：`AudioRecorder` 既有的 `AVAudioEngine` tap 已逐 buffer 取得 PCM，新增一個 `onLevel: ([Float]) -> Void` callback，在 tap 內把 buffer 切成 15 段各算 RMS 後回拋（節流至 ~30Hz）。錄音與轉檔路徑不受影響。
 
 ## 5. Onboarding — O2 沉浸式單欄
 
@@ -122,12 +122,18 @@ menu bar 選單同步瘦身為：狀態列 → 開始／停止錄音 → 設定�
 | 檔案 | 職責 |
 |---|---|
 | `DeepSpace.swift` | 色票、漸層、材質、共用修飾子 |
-| `WaveformShape.swift` | 5 條波形的路徑計算（icon / menu bar / HUD 共用） |
+| `WaveformGeometry.swift` | 5 條波形的幾何計算（icon / menu bar / HUD 共用） |
+| `MenuBarIcon.swift` | menu bar 待命狀態的 template image |
+| `AudioLevelMeter.swift` | PCM → 15 段 RMS |
 | `FloatingPanel.swift` | 無標題列圓角浮動面板的 `NSPanel` 子類 |
-| `NebulaHUDView.swift` | 星雲球 + 日冕光束 + 軌道環 + 狀態膠囊（SwiftUI Canvas） |
+| `HUDPhase.swift` | HUD 四種狀態與其呈現參數 |
+| `NebulaHUDView.swift` | 星雲球 + 日冕光束 + 軌道環 + 狀態膠囊 |
 | `RecordingHUDController.swift` | HUD 的生命週期、定位、狀態轉換 |
+| `SettingsTab.swift` | 五個分頁的標題與圖示 |
+| `SettingsStore.swift` | SwiftUI 與 `Config` 之間的讀寫橋接 |
 | `SettingsView.swift` | 側邊欄五分頁 |
 | `SettingsWindowController.swift` | 設定視窗承載與單例管理 |
+| `OnboardingFlow.swift` | 四頁的文案與前進條件 |
 | `OnboardingView.swift` | 四頁沉浸式導覽 |
 | `PermissionStatus.swift` | 輔助使用與麥克風權限的查詢與輪詢 |
 
