@@ -16,7 +16,8 @@ struct OnboardingView: View {
     private var canAdvance: Bool {
         OnboardingFlow.canAdvance(from: page,
                                   permissions: permissions,
-                                  hasAPIKey: !store.apiKey.isEmpty,
+                                  providerType: store.activeProviderType,
+                                  apiKey: store.apiKey,
                                   didRecordOnce: didRecordOnce)
     }
 
@@ -132,23 +133,34 @@ struct OnboardingView: View {
                     get: { store.activeProvider },
                     set: { store.selectProvider($0) }
                 )) {
-                    ForEach(store.providerNames, id: \.self) { Text($0).tag($0) }
+                    // Providers this macOS version cannot run are left out
+                    // rather than offered as a dead choice; the settings window
+                    // lists them explicitly as unavailable.
+                    ForEach(store.providerOptions.filter(\.isAvailable), id: \.name) {
+                        Text($0.name).tag($0.name)
+                    }
                 }
                 .pickerStyle(.segmented)
-                SecureField("API Key", text: $store.apiKey)
-                    .textFieldStyle(.plain)
-                    .font(.system(size: 11, design: .monospaced))
-                    .padding(8)
-                    .background(RoundedRectangle(cornerRadius: 9)
-                        .fill(DeepSpace.color(DeepSpace.starDust, opacity: 0.06)))
-                    .onSubmit { store.saveAPIKey() }
+                if store.activeProviderNeedsAPIKey {
+                    SecureField("API Key", text: $store.apiKey)
+                        .textFieldStyle(.plain)
+                        .font(.system(size: 11, design: .monospaced))
+                        .padding(8)
+                        .background(RoundedRectangle(cornerRadius: 9)
+                            .fill(DeepSpace.color(DeepSpace.starDust, opacity: 0.06)))
+                        .onSubmit { store.saveAPIKey() }
+                } else {
+                    Text("不需要 API Key，直接繼續即可。")
+                        .font(.system(size: 11))
+                        .foregroundStyle(DeepSpace.color(DeepSpace.starDust))
+                }
             }
             .frame(maxWidth: 320)
         }
     }
 
     private func advance() {
-        if page == .provider { store.saveAPIKey() }
+        if page == .provider, store.activeProviderNeedsAPIKey { store.saveAPIKey() }
         if let next = OnboardingFlow.next(after: page) {
             page = next
         } else {

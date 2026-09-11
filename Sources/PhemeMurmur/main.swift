@@ -402,10 +402,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     /// Auto-registers built-in providers that don't require any config (currently
     /// only Apple on-device speech on macOS 26+). Users who upgrade from an older
-    /// version still see these in the menu without editing config.jsonc.
+    /// version get these without editing config.jsonc; `ProviderCatalog.options`
+    /// mirrors this rule so the settings window lists them too.
     private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider]) {
-        if #available(macOS 26.0, *), providers["Apple"] == nil {
-            providers["Apple"] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
+        if #available(macOS 26.0, *), providers[ProviderCatalog.builtInAppleName] == nil {
+            providers[ProviderCatalog.builtInAppleName] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
                 AppleSpeechProvider(model: model)
             }
         }

@@ -18,28 +18,65 @@ final class OnboardingFlowTests: XCTestCase {
 
     func testWelcomeAlwaysAdvances() {
         XCTAssertTrue(OnboardingFlow.canAdvance(from: .welcome, permissions: missingMic,
-                                                hasAPIKey: false, didRecordOnce: false))
+                                                providerType: nil, apiKey: "", didRecordOnce: false))
     }
 
     func testPermissionsBlockUntilAllGranted() {
         XCTAssertFalse(OnboardingFlow.canAdvance(from: .permissions, permissions: missingMic,
-                                                 hasAPIKey: false, didRecordOnce: false))
+                                                 providerType: nil, apiKey: "", didRecordOnce: false))
         XCTAssertTrue(OnboardingFlow.canAdvance(from: .permissions, permissions: granted,
-                                                hasAPIKey: false, didRecordOnce: false))
+                                                providerType: nil, apiKey: "", didRecordOnce: false))
     }
 
-    func testProviderBlocksUntilAPIKeyPresent() {
+    func testProviderBlocksUntilAPIKeyPresentForKeyedProviders() {
         XCTAssertFalse(OnboardingFlow.canAdvance(from: .provider, permissions: granted,
-                                                 hasAPIKey: false, didRecordOnce: false))
+                                                 providerType: .openai, apiKey: "", didRecordOnce: false))
         XCTAssertTrue(OnboardingFlow.canAdvance(from: .provider, permissions: granted,
-                                               hasAPIKey: true, didRecordOnce: false))
+                                                providerType: .openai, apiKey: "sk-real", didRecordOnce: false))
+    }
+
+    func testProviderAdvancesWithoutKeyForOnDeviceProvider() {
+        XCTAssertTrue(OnboardingFlow.canAdvance(from: .provider, permissions: granted,
+                                                providerType: .apple, apiKey: "", didRecordOnce: false))
+    }
+
+    func testProviderRejectsTheDefaultConfigPlaceholders() {
+        XCTAssertFalse(OnboardingFlow.canAdvance(from: .provider, permissions: granted,
+                                                 providerType: .openai, apiKey: "sk-proj-xxx", didRecordOnce: false))
+        XCTAssertFalse(OnboardingFlow.canAdvance(from: .provider, permissions: granted,
+                                                 providerType: .gemini, apiKey: " AIzaxxx ", didRecordOnce: false))
+        XCTAssertTrue(OnboardingFlow.canAdvance(from: .provider, permissions: granted,
+                                                providerType: .gemini, apiKey: "AIzaReal", didRecordOnce: false))
+    }
+
+    func testProviderBlocksWhenNoProviderIsSelected() {
+        XCTAssertFalse(OnboardingFlow.canAdvance(from: .provider, permissions: granted,
+                                                 providerType: nil, apiKey: "sk-real", didRecordOnce: false))
+    }
+
+    /// The default config ships the placeholders this asserts on; if they ever
+    /// change, `ProviderType.placeholderAPIKey` must change with them.
+    func testDefaultConfigPlaceholdersAreTheOnesWeTreatAsUnset() {
+        XCTAssertTrue(Config.defaultConfigContent.contains(ProviderType.openai.placeholderAPIKey ?? ""))
+        XCTAssertTrue(Config.defaultConfigContent.contains(ProviderType.gemini.placeholderAPIKey ?? ""))
+    }
+
+    func testKickersAreASequentialFourStepRun() {
+        XCTAssertEqual(OnboardingPage.allCases.map(\.kicker),
+                       ["STEP 01 / 04", "STEP 02 / 04", "STEP 03 / 04", "STEP 04 / 04"])
+        XCTAssertEqual(OnboardingPage.allCases.count, 4)
+    }
+
+    func testWelcomeCopyMatchesTheNumberOfSteps() {
+        XCTAssertTrue(OnboardingPage.welcome.body.contains("四"),
+                      "welcome copy must not promise a different number of steps than there are dots")
     }
 
     func testTryItBlocksUntilOneSuccessfulRecording() {
         XCTAssertFalse(OnboardingFlow.canAdvance(from: .tryIt, permissions: granted,
-                                                 hasAPIKey: true, didRecordOnce: false))
+                                                 providerType: .openai, apiKey: "sk-real", didRecordOnce: false))
         XCTAssertTrue(OnboardingFlow.canAdvance(from: .tryIt, permissions: granted,
-                                               hasAPIKey: true, didRecordOnce: true))
+                                               providerType: .openai, apiKey: "sk-real", didRecordOnce: true))
     }
 
     func testNextWalksForwardAndStopsAtEnd() {

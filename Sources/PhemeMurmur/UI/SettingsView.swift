@@ -83,12 +83,16 @@ struct SettingsView: View {
     private var transcriptionPane: some View {
         VStack(alignment: .leading, spacing: 14) {
             paneTitle("轉錄服務", "選擇語音轉文字的供應商，並設定金鑰。")
-            ForEach(store.providerNames, id: \.self) { name in
-                Button { store.selectProvider(name) } label: {
+            ForEach(store.providerOptions, id: \.name) { option in
+                Button { store.selectProvider(option.name) } label: {
                     HStack {
-                        Text(name)
+                        Text(option.name)
                         Spacer()
-                        if name == store.activeProvider {
+                        if let reason = option.unavailableReason {
+                            Text(reason)
+                                .font(.system(size: 10))
+                                .foregroundStyle(DeepSpace.color(DeepSpace.starDust, opacity: 0.7))
+                        } else if option.name == store.activeProvider {
                             Text("使用中")
                                 .font(.system(size: 10, weight: .bold))
                                 .padding(.horizontal, 9).padding(.vertical, 3)
@@ -101,18 +105,26 @@ struct SettingsView: View {
                     }
                     .padding(11)
                     .background(rowBackground)
+                    .opacity(option.isAvailable ? 1 : 0.45)
                 }
                 .buttonStyle(.plain)
+                .disabled(!option.isAvailable)
             }
-            Text("API KEY").font(.system(size: 10, weight: .semibold)).kerning(1.2)
-                .foregroundStyle(DeepSpace.color(DeepSpace.starDust, opacity: 0.8))
-            SecureField("", text: $store.apiKey)
-                .textFieldStyle(.plain)
-                .font(.system(size: 11, design: .monospaced))
-                .padding(8)
-                .background(rowBackground)
-                .onSubmit { store.saveAPIKey() }
-            Button("儲存金鑰") { store.saveAPIKey() }
+            if store.activeProviderNeedsAPIKey {
+                Text("API KEY").font(.system(size: 10, weight: .semibold)).kerning(1.2)
+                    .foregroundStyle(DeepSpace.color(DeepSpace.starDust, opacity: 0.8))
+                SecureField("", text: $store.apiKey)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 11, design: .monospaced))
+                    .padding(8)
+                    .background(rowBackground)
+                    .onSubmit { store.saveAPIKey() }
+                Button("儲存金鑰") { store.saveAPIKey() }
+            } else {
+                Text("這個供應商在裝置上辨識，不需要 API Key。")
+                    .font(.system(size: 11))
+                    .foregroundStyle(DeepSpace.color(DeepSpace.starDust))
+            }
             Spacer()
         }
     }

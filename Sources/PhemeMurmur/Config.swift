@@ -30,6 +30,36 @@ extension ProviderType {
     }
 }
 
+extension ProviderType {
+    /// Whether this kind of provider can only work with an API key. Apple's
+    /// recognition runs on-device, so it needs none.
+    var requiresAPIKey: Bool {
+        switch self {
+        case .openai, .gemini: return true
+        case .apple: return false
+        }
+    }
+
+    /// The obviously-fake key shipped in `Config.defaultConfigContent` for this
+    /// type. Treated as "not set" so onboarding does not accept it as real.
+    /// Keep in sync with `defaultConfigContent`.
+    var placeholderAPIKey: String? {
+        switch self {
+        case .openai: return "sk-proj-xxx"
+        case .gemini: return "AIzaxxx"
+        case .apple: return nil
+        }
+    }
+
+    /// True when `apiKey` is good enough to actually use this provider.
+    func hasUsableAPIKey(_ apiKey: String) -> Bool {
+        guard requiresAPIKey else { return true }
+        let trimmed = apiKey.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return false }
+        return trimmed != placeholderAPIKey
+    }
+}
+
 struct PostProcessConfig: Decodable {
     let baseURL: String?
     let model: String?

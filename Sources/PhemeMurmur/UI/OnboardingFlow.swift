@@ -8,7 +8,7 @@ enum OnboardingPage: Int, CaseIterable {
 
     var kicker: String {
         switch self {
-        case .welcome: return "WELCOME ABOARD"
+        case .welcome: return "STEP 01 / 04"
         case .permissions: return "STEP 02 / 04"
         case .provider: return "STEP 03 / 04"
         case .tryIt: return "STEP 04 / 04"
@@ -27,11 +27,11 @@ enum OnboardingPage: Int, CaseIterable {
     var body: String {
         switch self {
         case .welcome:
-            return "按下快捷鍵說話，再按一次就把文字送進你正在打字的地方。\n先花 30 秒完成三個設定。"
+            return "按下快捷鍵說話，再按一次就把文字送進你正在打字的地方。\n先花 30 秒走完四個步驟。"
         case .permissions:
             return "PhemeMurmur 需要這兩項才能聽見你的聲音、並把文字送進輸入框。"
         case .provider:
-            return "選一個語音轉文字的供應商，並填入 API Key。"
+            return "選一個語音轉文字的供應商。雲端服務需要 API Key，Apple 在裝置上辨識則不用。"
         case .tryIt:
             return "按一次快捷鍵，說一句話，再按一次結束。\n看到文字出現就完成了。"
         }
@@ -40,9 +40,14 @@ enum OnboardingPage: Int, CaseIterable {
 
 enum OnboardingFlow {
 
+    /// `providerType` is the type of the currently selected provider (nil when no
+    /// provider is selected at all). Whether a key is required — and whether the
+    /// value typed in is a real key rather than the placeholder the default config
+    /// ships — is derived from the type, so user-defined providers behave correctly.
     static func canAdvance(from page: OnboardingPage,
                            permissions: [PermissionItem],
-                           hasAPIKey: Bool,
+                           providerType: ProviderType?,
+                           apiKey: String,
                            didRecordOnce: Bool) -> Bool {
         switch page {
         case .welcome:
@@ -50,7 +55,8 @@ enum OnboardingFlow {
         case .permissions:
             return permissions.allSatisfy(\.granted)
         case .provider:
-            return hasAPIKey
+            guard let providerType else { return false }
+            return providerType.hasUsableAPIKey(apiKey)
         case .tryIt:
             return didRecordOnce
         }
