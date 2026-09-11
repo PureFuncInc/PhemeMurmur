@@ -26,7 +26,7 @@
 
 | Token | 值 | 用途 |
 |---|---|---|
-| `spaceVoid` | `#080B1A` → `#0E1230` 徑向漸層 | icon 底、面板底 |
+| `spaceVoid` | `#1B2350`（中心）→ `#080B1A`（邊緣）徑向漸層 | icon 底、面板底 |
 | `auroraCyan` | `#3DE8FF` | 主強調、波形高點、錄音中 |
 | `auroraViolet` | `#7B5CFF` | 漸層另一端、選中態 |
 | `nebulaPink` | `#FF6EC7` | 極少量重點（脈衝尾端、REC 指示） |
