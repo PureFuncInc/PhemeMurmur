@@ -67,13 +67,22 @@ func renderIcon(size: Int) -> Data? {
                            options: [.drawsAfterEndLocation])
 
     if !minimal {
-        // Horizon glow band beneath the bars.
+        // Horizon glow band beneath the bars: a radial gradient fading to zero alpha,
+        // squashed into an ellipse via a scale transform, so there is no hard edge
+        // anywhere and the glow blends straight into the background.
         ctx.saveGState()
-        ctx.setShadow(offset: .zero, blur: s * 0.09, color: cyan.copy(alpha: 0.55))
-        ctx.setFillColor(cyan.copy(alpha: 0.32)!)
-        let band = CGRect(x: s * 0.13, y: s * 0.28, width: s * 0.74, height: s * 0.035)
-        ctx.addPath(CGPath(ellipseIn: band, transform: nil))
-        ctx.fillPath()
+        let bandCenter = CGPoint(x: s * 0.5, y: s * 0.297)
+        let bandWidth = s * 0.74
+        let bandHeight = s * 0.16
+        ctx.translateBy(x: bandCenter.x, y: bandCenter.y)
+        ctx.scaleBy(x: 1, y: bandHeight / bandWidth)
+        let glowGradient = CGGradient(colorsSpace: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      colors: [cyan.copy(alpha: 0.5)!, cyan.copy(alpha: 0)!] as CFArray,
+                                      locations: [0, 1])!
+        ctx.drawRadialGradient(glowGradient,
+                               startCenter: .zero, startRadius: 0,
+                               endCenter: .zero, endRadius: bandWidth / 2,
+                               options: [])
         ctx.restoreGState()
 
         // Orbital arc on the right, fading at both ends via a gradient-filled stroke.
