@@ -126,6 +126,33 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(try decode(updated).prefix, value)
     }
 
+    func testStringFieldRoundTripsValueContainingTab() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let value = "col1\tcol2"
+        let updated = Config.upsertStringField("prefix", value: value, in: content)
+        XCTAssertFalse(updated.contains("\t"), "a raw tab inside a JSON string literal is invalid")
+        XCTAssertEqual(try decode(updated).prefix, value)
+    }
+
+    func testStringFieldRoundTripsValueContainingNewline() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let value = "line1\nline2\r\nline3"
+        let updated = Config.upsertStringField("prefix", value: value, in: content)
+        XCTAssertEqual(try decode(updated).prefix, value)
+    }
+
+    func testStringFieldRoundTripsControlCharactersMixedWithQuotesAndBackslashes() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let value = "say \"hi\"\tC:\\path\nnext\u{01}end"
+        let updated = Config.upsertStringField("prefix", value: value, in: content)
+        XCTAssertEqual(try decode(updated).prefix, value)
+
+        // And re-saving the already-escaped file must stay valid, the same way
+        // the quote case does.
+        let again = Config.upsertStringField("prefix", value: value, in: updated)
+        XCTAssertEqual(try decode(again).prefix, value)
+    }
+
     /// The reported corruption: the first save writes an escaped quote, the second
     /// save's matcher used to stop at that `\"` and truncate mid-literal.
     func testTwoConsecutiveSavesOfQuotedValueStayValid() throws {

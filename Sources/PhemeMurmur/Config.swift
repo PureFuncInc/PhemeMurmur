@@ -212,12 +212,10 @@ enum Config {
     static func saveAPIKey(providerName: String, apiKey: String) -> Bool {
         guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return false }
 
-        // JSON-escape the new key so quotes/backslashes don't break the file.
-        let jsonEscaped = apiKey
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+        // JSON-escape the new key so quotes/backslashes/control characters don't
+        // break the file.
         // Also escape $ and \ for the NSRegularExpression replacement template.
-        let templateKey = NSRegularExpression.escapedTemplate(for: jsonEscaped)
+        let templateKey = NSRegularExpression.escapedTemplate(for: jsonEscaped(apiKey))
 
         func replace(pattern: String, in source: inout String) -> Bool {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
@@ -256,6 +254,33 @@ enum Config {
     /// exact rather than "everything up to the next comma/newline/brace", which
     /// would swallow a trailing `// comment` on the same line.
     static let jsonScalarPattern = "(?:true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)"
+
+    /// JSON-escapes a value for writing into config.jsonc. Besides the obvious
+    /// backslash and quote, every character below 0x20 must be escaped: a raw tab
+    /// or newline inside a string literal is invalid JSON, so the file would fail
+    /// to parse at next launch and the user would lose every provider and key.
+    static func jsonEscaped(_ value: String) -> String {
+        var out = ""
+        out.reserveCapacity(value.unicodeScalars.count)
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            case "\u{08}": out += "\\b"
+            case "\u{0C}": out += "\\f"
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            default:
+                if scalar.value < 0x20 {
+                    out += String(format: "\\u%04x", scalar.value)
+                } else {
+                    out.unicodeScalars.append(scalar)
+                }
+            }
+        }
+        return out
+    }
 
     /// Returns the character ranges covered by `//` line comments and `/* */` block
     /// comments in `source`, using the same string-literal-aware scan as `stripComments`
@@ -336,10 +361,7 @@ enum Config {
     /// unit tested without touching `configPath`.
     static func upsertStringField(_ fieldName: String, value: String, in content: String) -> String {
         var content = content
-        let jsonEscapedValue = value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        let newEntry = "\"\(fieldName)\": \"\(jsonEscapedValue)\""
+        let newEntry = "\"\(fieldName)\": \"\(jsonEscaped(value))\""
 
         let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
         let pattern = "\"\(escapedName)\"\\s*:\\s*\"\(jsonStringBodyPattern)\""
