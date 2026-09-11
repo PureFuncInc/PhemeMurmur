@@ -33,6 +33,12 @@ struct NebulaHUDView: View {
             if showsCapsule { capsule }
             if showsCapsule, !liveText.isEmpty { transcriptArea }
         }
+        // Reserve the transcript area's width up front so the panel measures the
+        // same with and without live text. Otherwise it would widen and re-centre
+        // the moment the first recognised words arrive, mid-sentence, which reads
+        // as a glitch. Only the height grows with extra lines, and the panel is
+        // anchored by its bottom edge, so those lines extend upward.
+        .frame(minWidth: showsCapsule ? Self.reservedContentWidth : nil)
         .padding(24)
         .onAppear {
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
@@ -127,8 +133,8 @@ struct NebulaHUDView: View {
             .truncationMode(.head)
             .multilineTextAlignment(.leading)
             .fixedSize(horizontal: false, vertical: true)
-            .frame(width: transcriptWidth, alignment: .leading)
-            .padding(.horizontal, 13)
+            .frame(width: Self.transcriptWidth, alignment: .leading)
+            .padding(.horizontal, Self.transcriptHorizontalPadding)
             .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: transcriptCornerRadius, style: .continuous)
@@ -144,7 +150,10 @@ struct NebulaHUDView: View {
             )
     }
 
-    private var transcriptWidth: CGFloat { 244 }
+    private static let transcriptWidth: CGFloat = 244
+    private static let transcriptHorizontalPadding: CGFloat = 13
+    /// Width the HUD always occupies, text or no text.
+    private static let reservedContentWidth = transcriptWidth + transcriptHorizontalPadding * 2
     /// Same squircle rule the rest of the Deep Space surfaces use, taken from the
     /// area's collapsed (single-line) height so it matches the capsule's feel.
     private var transcriptCornerRadius: CGFloat { DeepSpace.cornerRadius(for: 62) }
