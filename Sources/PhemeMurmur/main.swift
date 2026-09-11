@@ -19,6 +19,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let hud = RecordingHUDController()
     private var recordingStartedAt: Date?
     private var hudTickTimer: Timer?
+    /// The in-flight transcription, so Esc can cancel it. Otherwise a stalled
+    /// network leaves the click-through HUD on screen until URLSession's 60 s
+    /// default timeout.
+    private var transcriptionTask: Task<Void, Never>?
 
     /// True from the moment the onboarding window opens until it closes
     /// (finish button or the red close button — `windowWillClose` fires on
@@ -193,8 +197,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func handleCancel() {
-        guard state == .recording else { return }
+        switch state {
+        case .idle:
+            return
+        case .recording:
+            cancelRecording()
+        case .transcribing:
+            cancelTranscription()
+        }
+    }
 
+    private func cancelRecording() {
         // Stop recording and discard the audio
         if case .success(let fileURL) = audioRecorder.stopRecording() {
             try? FileManager.default.removeItem(at: fileURL)
@@ -209,6 +222,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hudTickTimer = nil
         recordingStartedAt = nil
         audioRecorder.onLevel = nil
+        hud.hide()
+    }
+
+    /// Esc during transcription: cancels the request (URLSession's async API is
+    /// cancellation-aware) and takes the HUD down immediately, so a stalled
+    /// network can never strand it on screen.
+    private func cancelTranscription() {
+        transcriptionTask?.cancel()
+        transcriptionTask = nil
+        state = .idle
+        updateStatus("Idle")
+        NSSound(named: "Funk")?.play()
+        print("⛔ Transcription cancelled.")
         hud.hide()
     }
 
@@ -313,12 +339,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         print("⏹ Stopped. Transcribing via \(self.activeProviderName)...")
         hud.show(.transcribing(provider: activeProviderName))
 
-        Task {
+        transcriptionTask = Task {
             do {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
                 let finalText = try await provider.transcribe(fileURL: fileURL, language: template?.language, prompt: template?.prompt)
                 await MainActor.run {
+                    // Esc already reset the UI; never paste after a cancel.
+                    guard !Task.isCancelled else { return }
                     if finalText == "__SILENCE__" {
                         print("Silence detected by model, skipping paste.")
                         self.state = .idle
@@ -342,6 +370,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 }
             } catch {
                 await MainActor.run {
+                    guard !Task.isCancelled else { return }
                     print("Transcription failed: \(error)")
                     ErrorLog.append(context: "transcribe", message: "\(error)")
                     self.state = .idle

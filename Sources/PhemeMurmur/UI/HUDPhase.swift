@@ -7,6 +7,22 @@ struct HUDPresentation {
     let ringSpeed: Double
     /// Nil means the HUD stays until the next phase arrives.
     let autoDismissAfter: TimeInterval?
+
+    /// The monospaced + letter-spaced capsule treatment is designed for the
+    /// English telegraphic states (LISTENING / TRANSCRIBING / DONE). Chinese
+    /// text — error messages such as "尚未設定轉錄服務" — must render in the
+    /// normal face without kerning, or the letter-spacing looks broken.
+    var usesTelegraphicStyle: Bool {
+        !HUDPresentation.containsHanCharacters(capsuleText)
+    }
+
+    static func containsHanCharacters(_ text: String) -> Bool {
+        text.unicodeScalars.contains { scalar in
+            (0x3400...0x4DBF).contains(scalar.value)   // CJK ext A
+                || (0x4E00...0x9FFF).contains(scalar.value)   // CJK unified
+                || (0xF900...0xFAFF).contains(scalar.value)   // compatibility
+        }
+    }
 }
 
 enum HUDPhase {
@@ -27,7 +43,7 @@ enum HUDPhase {
         case .transcribing(let provider):
             return HUDPresentation(
                 coreTint: DeepSpace.auroraCyan,
-                capsuleText: "TRANSCRIBING · \(provider.uppercased())",
+                capsuleText: "TRANSCRIBING · \(provider.uppercased()) · ESC",
                 ringSpeed: 1.4,
                 autoDismissAfter: nil
             )

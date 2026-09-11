@@ -119,8 +119,9 @@ struct NebulaHUDView: View {
                 .frame(width: 5, height: 5)
                 .shadow(color: DeepSpace.color(DeepSpace.auroraCyan), radius: 4)
             Text(presentation.capsuleText)
-                .font(.system(size: 10.5, weight: .medium, design: .monospaced))
-                .kerning(1.1)
+                .font(.system(size: 10.5, weight: .medium,
+                              design: presentation.usesTelegraphicStyle ? .monospaced : .default))
+                .kerning(presentation.usesTelegraphicStyle ? 1.1 : 0)
                 .foregroundStyle(DeepSpace.color(DeepSpace.starDust))
         }
         .padding(.horizontal, 14)

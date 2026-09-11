@@ -20,7 +20,7 @@ final class HUDPhaseTests: XCTestCase {
     func testTranscribingShowsProviderAndSpinsFaster() {
         let recording = HUDPhase.recording(elapsed: 3).presentation
         let p = HUDPhase.transcribing(provider: "OpenAI").presentation
-        XCTAssertEqual(p.capsuleText, "TRANSCRIBING · OPENAI")
+        XCTAssertEqual(p.capsuleText, "TRANSCRIBING · OPENAI · ESC")
         // ringSpeed is seconds per rotation, so faster means a smaller value.
         XCTAssertLessThan(p.ringSpeed, recording.ringSpeed)
         XCTAssertNil(p.autoDismissAfter)
@@ -42,5 +42,17 @@ final class HUDPhaseTests: XCTestCase {
         let failed = HUDPhase.failed(message: "x").presentation.coreTint
         let recording = HUDPhase.recording(elapsed: 1).presentation.coreTint
         XCTAssertNotEqual(failed.r, recording.r, accuracy: 0.0001)
+    }
+
+    func testEnglishStatesKeepTheTelegraphicStyle() {
+        XCTAssertTrue(HUDPhase.recording(elapsed: 3).presentation.usesTelegraphicStyle)
+        XCTAssertTrue(HUDPhase.transcribing(provider: "OpenAI").presentation.usesTelegraphicStyle)
+        XCTAssertTrue(HUDPhase.done.presentation.usesTelegraphicStyle)
+        XCTAssertTrue(HUDPhase.failed(message: "HTTP 429").presentation.usesTelegraphicStyle)
+    }
+
+    func testChineseMessagesDropTheMonospacedKernedStyle() {
+        XCTAssertFalse(HUDPhase.failed(message: "尚未設定轉錄服務").presentation.usesTelegraphicStyle)
+        XCTAssertFalse(HUDPhase.failed(message: "網路錯誤 (HTTP 500)").presentation.usesTelegraphicStyle)
     }
 }
