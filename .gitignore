@@ -6,3 +6,4 @@ DerivedData/
 *.xcworkspace
 xcuserdata/
 dist/
+.superpowers/
