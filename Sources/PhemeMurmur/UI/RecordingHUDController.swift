@@ -17,6 +17,7 @@ final class RecordingHUDController {
 
         let panel = existingPanel()
         render()
+        resizeToFitContent()
         panel.positionAtBottomCentre()
         panel.orderFrontRegardless()
 
@@ -51,5 +52,16 @@ final class RecordingHUDController {
 
     private func render() {
         hostingView?.rootView = NebulaHUDView(phase: phase, levels: levels)
+    }
+
+    /// Resizes the panel to the hosting view's SwiftUI-measured fitting size so the
+    /// capsule text (which varies in length across phases and languages) is never
+    /// clipped. Must run before `positionAtBottomCentre()`, which centres using the
+    /// panel's current width.
+    private func resizeToFitContent() {
+        guard let hostingView, let panel else { return }
+        let fitting = hostingView.fittingSize
+        guard fitting.width > 0, fitting.height > 0 else { return }
+        panel.setContentSize(fitting)
     }
 }

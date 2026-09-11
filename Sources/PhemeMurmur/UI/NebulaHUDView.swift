@@ -34,9 +34,19 @@ struct NebulaHUDView: View {
             withAnimation(.easeInOut(duration: 1.5).repeatForever(autoreverses: true)) {
                 breathe = true
             }
-            withAnimation(.linear(duration: presentation.ringSpeed).repeatForever(autoreverses: false)) {
-                ringAngle = 360
-            }
+            spinRing(duration: presentation.ringSpeed)
+        }
+        .onChange(of: presentation.ringSpeed) { newSpeed in
+            spinRing(duration: newSpeed)
+        }
+    }
+
+    /// Advances the ring's target angle by a full turn rather than resetting to a
+    /// fixed value, so a phase change (and its new ringSpeed) blends into the
+    /// current rotation instead of snapping the ring back to its start position.
+    private func spinRing(duration: Double) {
+        withAnimation(.linear(duration: duration).repeatForever(autoreverses: false)) {
+            ringAngle += 360
         }
     }
 
