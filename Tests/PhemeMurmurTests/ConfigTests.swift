@@ -97,4 +97,84 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(Config.stripComments(from: source), source,
                        "// inside a quoted string value must not be treated as a comment")
     }
+
+    // MARK: - String values containing quotes / backslashes
+
+    /// Decodes `content` (comments stripped) to prove the edited file is still valid JSON.
+    private func decode(_ content: String) throws -> ConfigFile {
+        let stripped = Config.stripComments(from: content)
+        let data = try XCTUnwrap(stripped.data(using: .utf8))
+        return try JSONDecoder().decode(ConfigFile.self, from: data)
+    }
+
+    func testStringFieldRoundTripsValueContainingQuotes() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let updated = Config.upsertStringField("prefix", value: #"say "hi""#, in: content)
+        XCTAssertEqual(try decode(updated).prefix, #"say "hi""#)
+    }
+
+    func testStringFieldRoundTripsValueContainingBackslash() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let updated = Config.upsertStringField("prefix", value: #"C:\path"#, in: content)
+        XCTAssertEqual(try decode(updated).prefix, #"C:\path"#)
+    }
+
+    func testStringFieldRoundTripsValueContainingBothQuoteAndBackslash() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let value = #"a\"b\c"#
+        let updated = Config.upsertStringField("prefix", value: value, in: content)
+        XCTAssertEqual(try decode(updated).prefix, value)
+    }
+
+    /// The reported corruption: the first save writes an escaped quote, the second
+    /// save's matcher used to stop at that `\"` and truncate mid-literal.
+    func testTwoConsecutiveSavesOfQuotedValueStayValid() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let first = Config.upsertStringField("prefix", value: #"say "hi""#, in: content)
+        XCTAssertEqual(try decode(first).prefix, #"say "hi""#)
+
+        let second = Config.upsertStringField("prefix", value: #"say "hi""#, in: first)
+        XCTAssertEqual(try decode(second).prefix, #"say "hi""#)
+        XCTAssertEqual(second, first, "re-saving the same value must be idempotent")
+
+        let third = Config.upsertStringField("prefix", value: "plain", in: second)
+        XCTAssertEqual(try decode(third).prefix, "plain")
+    }
+
+    func testStringFieldWithQuotedValueDoesNotDuplicateTheKey() throws {
+        let content = #"{"providers": {}, "prefix": ""}"#
+        let first = Config.upsertStringField("prefix", value: #"a"b"#, in: content)
+        let second = Config.upsertStringField("prefix", value: #"c"d"#, in: first)
+        XCTAssertEqual(second.components(separatedBy: "\"prefix\"").count - 1, 1,
+                       "the key must be rewritten in place, not duplicated")
+        XCTAssertEqual(try decode(second).prefix, #"c"d"#)
+    }
+
+    // MARK: - Raw values with trailing same-line comments
+
+    func testRawFieldWithTrailingLineCommentIsUpdatedInPlace() throws {
+        let content = """
+        {
+            "providers": {},
+            "silence-threshold": 0.003 // tuned
+        }
+        """
+        let updated = Config.upsertRawField("silence-threshold", rawValue: "0.0500", in: content)
+        XCTAssertEqual(updated.components(separatedBy: "\"silence-threshold\"").count - 1, 1,
+                       "the existing key must be updated, not duplicated")
+        XCTAssertTrue(updated.contains("// tuned"), "the trailing comment must survive")
+        XCTAssertEqual(try XCTUnwrap(decode(updated).silenceThreshold), 0.05, accuracy: 0.0001)
+    }
+
+    func testRawBooleanWithTrailingLineCommentIsUpdatedInPlace() throws {
+        let content = """
+        {
+            "providers": {},
+            "voice-commands": false // off by default
+        }
+        """
+        let updated = Config.upsertRawField("voice-commands", rawValue: "true", in: content)
+        XCTAssertEqual(updated.components(separatedBy: "\"voice-commands\"").count - 1, 1)
+        XCTAssertTrue(try decode(updated).resolvedVoiceCommands)
+    }
 }

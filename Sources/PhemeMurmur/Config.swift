@@ -206,7 +206,7 @@ enum Config {
 
         // Try modern `providers` dict first.
         let escapedName = NSRegularExpression.escapedPattern(for: providerName)
-        let providersPattern = "(\"\(escapedName)\"\\s*:\\s*\\{[^}]*?\"api-key\"\\s*:\\s*\")[^\"]*(\")"
+        let providersPattern = "(\"\(escapedName)\"\\s*:\\s*\\{[^}]*?\"api-key\"\\s*:\\s*\")\(Self.jsonStringBodyPattern)(\")"
         if replace(pattern: providersPattern, in: &content) {
             try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
             return true
@@ -214,6 +214,18 @@ enum Config {
 
         return false
     }
+
+    /// Regex body of a JSON string literal *without* its surrounding quotes:
+    /// either a character that is neither a quote nor a backslash, or a backslash
+    /// escape (`\\"`, `\\\\`, `\\n`, …). A naive `[^"]*` stops at the first `\\"`
+    /// inside the value, so re-saving a value that contains a quote truncates the
+    /// match in the middle of the literal and corrupts the file.
+    static let jsonStringBodyPattern = "(?:[^\"\\\\]|\\\\.)*"
+
+    /// Regex for a non-string JSON scalar (boolean, null, number). Deliberately
+    /// exact rather than "everything up to the next comma/newline/brace", which
+    /// would swallow a trailing `// comment` on the same line.
+    static let jsonScalarPattern = "(?:true|false|null|-?[0-9]+(?:\\.[0-9]+)?(?:[eE][-+]?[0-9]+)?)"
 
     /// Returns the character ranges covered by `//` line comments and `/* */` block
     /// comments in `source`, using the same string-literal-aware scan as `stripComments`
@@ -300,7 +312,7 @@ enum Config {
         let newEntry = "\"\(fieldName)\": \"\(jsonEscapedValue)\""
 
         let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
-        let pattern = "\"\(escapedName)\"\\s*:\\s*\"[^\"]*\""
+        let pattern = "\"\(escapedName)\"\\s*:\\s*\"\(jsonStringBodyPattern)\""
         if let range = firstUncommentedMatch(of: pattern, in: content) {
             content.replaceSubrange(range, with: newEntry)
         } else if let idx = content.firstIndex(of: "{") {
@@ -324,7 +336,7 @@ enum Config {
         var content = content
         let newEntry = "\"\(fieldName)\": \(rawValue)"
         let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
-        let pattern = "\"\(escapedName)\"\\s*:\\s*[^,\\r\\n}]+"
+        let pattern = "\"\(escapedName)\"\\s*:\\s*\(jsonScalarPattern)"
         if let range = firstUncommentedMatch(of: pattern, in: content) {
             content.replaceSubrange(range, with: newEntry)
         } else if let idx = content.firstIndex(of: "{") {
