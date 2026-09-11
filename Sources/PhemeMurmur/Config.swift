@@ -215,35 +215,85 @@ enum Config {
         return false
     }
 
-    /// Finds the first match of `pattern` that is not on a commented-out line (a line
-    /// whose content, ignoring leading whitespace, starts with `//`). Several of the
-    /// default config template's fields (e.g. "prefix", "silence-threshold") ship
-    /// commented out; a naive whole-file regex would happily match inside the comment
-    /// and "update" a value that stays commented out (and therefore never takes
-    /// effect), silently failing to save. Scanning line-by-line avoids that.
-    private static func firstUncommentedMatch(of pattern: String, in content: String) -> Range<String.Index>? {
-        var searchStart = content.startIndex
-        while searchStart < content.endIndex {
-            let lineEnd = content[searchStart...].firstIndex(of: "\n") ?? content.endIndex
-            let line = content[searchStart..<lineEnd]
-            if line.trimmingCharacters(in: .whitespaces).hasPrefix("//") {
-                searchStart = lineEnd < content.endIndex ? content.index(after: lineEnd) : lineEnd
-                continue
+    /// Returns the character ranges covered by `//` line comments and `/* */` block
+    /// comments in `source`, using the same string-literal-aware scan as `stripComments`
+    /// (so a `//` or `/*` inside a quoted string is not mistaken for a comment).
+    private static func commentRanges(in source: String) -> [Range<String.Index>] {
+        var ranges: [Range<String.Index>] = []
+        var i = source.startIndex
+        var inString = false
+
+        while i < source.endIndex {
+            let c = source[i]
+            let next = source.index(after: i)
+
+            if inString {
+                if c == "\\" && next < source.endIndex {
+                    i = source.index(after: next)
+                } else {
+                    if c == "\"" { inString = false }
+                    i = next
+                }
+            } else if c == "\"" {
+                inString = true
+                i = next
+            } else if c == "/" && next < source.endIndex {
+                let n = source[next]
+                if n == "/" {
+                    let start = i
+                    var j = source.index(after: next)
+                    while j < source.endIndex && source[j] != "\n" { j = source.index(after: j) }
+                    ranges.append(start..<j)
+                    i = j
+                } else if n == "*" {
+                    let start = i
+                    var j = source.index(after: next)
+                    var closed = false
+                    while j < source.endIndex {
+                        let jNext = source.index(after: j)
+                        if source[j] == "*" && jNext < source.endIndex && source[jNext] == "/" {
+                            i = source.index(after: jNext)
+                            closed = true
+                            break
+                        }
+                        j = source.index(after: j)
+                    }
+                    if !closed { i = source.endIndex }
+                    ranges.append(start..<i)
+                } else {
+                    i = next
+                }
+            } else {
+                i = next
             }
-            if let range = line.range(of: pattern, options: .regularExpression) {
+        }
+        return ranges
+    }
+
+    /// Finds the first match of `pattern` that does not fall inside a `//` or `/* */`
+    /// comment. Several of the default config template's fields (e.g. "prefix",
+    /// "silence-threshold") ship commented out; a naive whole-file regex would happily
+    /// match inside the comment and "update" a value that stays commented out (and
+    /// therefore never takes effect), silently failing to save.
+    private static func firstUncommentedMatch(of pattern: String, in content: String) -> Range<String.Index>? {
+        let commented = commentRanges(in: content)
+        var searchRange = content.startIndex..<content.endIndex
+        while let range = content.range(of: pattern, options: .regularExpression, range: searchRange) {
+            if !commented.contains(where: { $0.overlaps(range) }) {
                 return range
             }
-            searchStart = lineEnd < content.endIndex ? content.index(after: lineEnd) : lineEnd
+            searchRange = range.upperBound..<content.endIndex
         }
         return nil
     }
 
-    /// Writes (or updates) a top-level string field in config.jsonc, preserving all other content.
-    /// If the field only appears commented out (or not at all), a new real entry is inserted
-    /// right after the opening `{` rather than uncommenting/corrupting the comment.
-    private static func saveTopLevelStringField(_ fieldName: String, value: String) {
-        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
-
+    /// Pure string transform behind `saveTopLevelStringField`: replaces the first
+    /// uncommented occurrence of `"fieldName": "..."` with `newEntry`, or inserts
+    /// `newEntry` as a new real entry right after the opening `{` if the field only
+    /// appears commented out (or not at all). Split out from the file I/O so it can be
+    /// unit tested without touching `configPath`.
+    static func upsertStringField(_ fieldName: String, value: String, in content: String) -> String {
+        var content = content
         let jsonEscapedValue = value
             .replacingOccurrences(of: "\\", with: "\\\\")
             .replacingOccurrences(of: "\"", with: "\\\"")
@@ -256,8 +306,31 @@ enum Config {
         } else if let idx = content.firstIndex(of: "{") {
             content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
         }
+        return content
+    }
 
-        try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
+    /// Writes (or updates) a top-level string field in config.jsonc, preserving all other content.
+    /// If the field only appears commented out (or not at all), a new real entry is inserted
+    /// right after the opening `{` rather than uncommenting/corrupting the comment.
+    private static func saveTopLevelStringField(_ fieldName: String, value: String) {
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+        let updated = upsertStringField(fieldName, value: value, in: content)
+        try? updated.write(toFile: configPath, atomically: true, encoding: .utf8)
+    }
+
+    /// Pure string transform behind `saveTopLevelRawField` — see `upsertStringField`.
+    /// Same preserve-the-rest-of-the-file approach, but without quoting the value.
+    static func upsertRawField(_ fieldName: String, rawValue: String, in content: String) -> String {
+        var content = content
+        let newEntry = "\"\(fieldName)\": \(rawValue)"
+        let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
+        let pattern = "\"\(escapedName)\"\\s*:\\s*[^,\\r\\n}]+"
+        if let range = firstUncommentedMatch(of: pattern, in: content) {
+            content.replaceSubrange(range, with: newEntry)
+        } else if let idx = content.firstIndex(of: "{") {
+            content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
+        }
+        return content
     }
 
     /// Writes (or updates) a top-level field whose value is not a JSON string
@@ -265,18 +338,9 @@ enum Config {
     /// saveTopLevelStringField, but without quoting the value, and skipping
     /// commented-out occurrences the same way.
     private static func saveTopLevelRawField(_ fieldName: String, rawValue: String) {
-        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
-
-        let newEntry = "\"\(fieldName)\": \(rawValue)"
-        let escapedName = NSRegularExpression.escapedPattern(for: fieldName)
-        let pattern = "\"\(escapedName)\"\\s*:\\s*[^,\\n}]+"
-        if let range = firstUncommentedMatch(of: pattern, in: content) {
-            content.replaceSubrange(range, with: newEntry)
-        } else if let idx = content.firstIndex(of: "{") {
-            content.insert(contentsOf: "\n    \(newEntry),", at: content.index(after: idx))
-        }
-
-        try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return }
+        let updated = upsertRawField(fieldName, rawValue: rawValue, in: content)
+        try? updated.write(toFile: configPath, atomically: true, encoding: .utf8)
     }
 
     /// Writes (or updates) the "hotkey" field in config.jsonc, preserving all other content.
