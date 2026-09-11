@@ -27,6 +27,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
     private var accessibilityPollTimer: Timer?
+    private let hud = RecordingHUDController()
+    private var recordingStartedAt: Date?
+    private var hudTickTimer: Timer?
 
     private var activeProvider: TranscriptionProvider? {
         providers[activeProviderName]
@@ -236,6 +239,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatus("Idle")
         NSSound(named: "Funk")?.play()
         print("⛔ Recording cancelled.")
+
+        hudTickTimer?.invalidate()
+        hudTickTimer = nil
+        recordingStartedAt = nil
+        audioRecorder.onLevel = nil
+        hud.hide()
     }
 
     private func startHotkeyMonitor() {
@@ -271,6 +280,16 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Recording...")
             NSSound(named: "Glass")?.play()
             print("🎙 Recording... Press Right Shift to stop, Esc to cancel.")
+
+            recordingStartedAt = Date()
+            audioRecorder.onLevel = { [weak self] levels in
+                self?.hud.update(levels: levels)
+            }
+            hud.show(.recording(elapsed: 0))
+            hudTickTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+                guard let self, let started = self.recordingStartedAt else { return }
+                self.hud.show(.recording(elapsed: Date().timeIntervalSince(started)))
+            }
         } catch {
             print("Failed to start recording: \(error)")
             ErrorLog.append(context: "recording-start", message: "\(error)")
@@ -280,6 +299,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func stopRecordingAndTranscribe() {
+        hudTickTimer?.invalidate()
+        hudTickTimer = nil
+        recordingStartedAt = nil
+        audioRecorder.onLevel = nil
+
         let result = audioRecorder.stopRecording()
         let fileURL: URL
         switch result {
@@ -289,18 +313,21 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             state = .idle
             updateStatus("Idle")
             print("No audio captured.")
+            hud.hide()
             return
         case .tooShort(let duration):
             state = .idle
             updateStatus("Too short (\(String(format: "%.1f", duration))s)")
             showErrorIcon()
             print("Recording too short (\(String(format: "%.1f", duration))s).")
+            hud.hide()
             return
         case .tooQuiet(let rms):
             state = .idle
             updateStatus("Too quiet (RMS \(String(format: "%.3f", rms)))")
             showErrorIcon()
             print("Recording too quiet (RMS \(String(format: "%.4f", rms))).")
+            hud.hide()
             return
         }
 
@@ -312,12 +339,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Error: \(Self.truncate("No API key"))")
             showErrorIcon(persistent: true)
             print("Cannot transcribe: No active provider configured.")
+            hud.hide()
             return
         }
 
         state = .transcribing
         updateStatus("Transcribing...")
         print("⏹ Stopped. Transcribing via \(self.activeProviderName)...")
+        hud.show(.transcribing(provider: activeProviderName))
 
         Task {
             do {
@@ -330,6 +359,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                         self.state = .idle
                         self.updateStatus("Idle")
                         self.refreshProviderLabel()
+                        self.hud.hide()
                         return
                     }
                     let processed: String
@@ -344,6 +374,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.state = .idle
                     self.updateStatus("Idle")
                     self.refreshProviderLabel()
+                    self.hud.show(.done)
                 }
             } catch {
                 await MainActor.run {
@@ -353,6 +384,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.updateStatus("Error: \(Self.truncate(error.localizedDescription))")
                     self.showErrorIcon()
                     self.refreshProviderLabel()
+                    self.hud.show(.failed(message: Self.truncate(error.localizedDescription)))
                 }
             }
 
