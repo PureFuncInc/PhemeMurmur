@@ -657,12 +657,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func updateIcon() {
         switch state {
         case .idle:
-            setIcon(symbolName: "waveform", color: nil)
+            setWaveformIcon()
         case .recording:
             setIcon(symbolName: "record.circle", color: .systemRed)
         case .transcribing:
             setIcon(symbolName: "text.bubble", color: .systemBlue)
         }
+    }
+
+    private func setWaveformIcon() {
+        guard let button = statusItem?.button else { return }
+        button.image = MenuBarIcon.waveformTemplate()
+        button.title = ""
     }
 
     private func showErrorIcon(persistent: Bool = false) {
