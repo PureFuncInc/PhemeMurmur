@@ -9,6 +9,9 @@ struct NebulaHUDView: View {
     let levels: [Float]
     /// Onboarding reuses the core as decoration and hides the status capsule.
     var showsCapsule: Bool = true
+    /// Live on-device recognition preview. Empty means no text area at all —
+    /// which is the permanent state for the batch providers (OpenAI, Gemini).
+    var liveText: String = ""
 
     private let beamCount = 15
     private let systemSize: CGFloat = 180
@@ -28,6 +31,7 @@ struct NebulaHUDView: View {
             .frame(width: systemSize, height: systemSize)
 
             if showsCapsule { capsule }
+            if showsCapsule, !liveText.isEmpty { transcriptArea }
         }
         .padding(24)
         .onAppear {
@@ -111,6 +115,39 @@ struct NebulaHUDView: View {
             .shadow(color: DeepSpace.color(presentation.coreTint, opacity: 0.55), radius: 22)
             .scaleEffect(breathe ? 1.06 : 0.94)
     }
+
+    /// The live-recognition readout. Grows from one to three lines with the text
+    /// and truncates at the *head*, so the words the user just said stay visible.
+    private var transcriptArea: some View {
+        Text(liveText)
+            .font(.system(size: 12, weight: .regular))
+            .foregroundStyle(DeepSpace.color(DeepSpace.starDust, opacity: 0.92))
+            .lineSpacing(2)
+            .lineLimit(3)
+            .truncationMode(.head)
+            .multilineTextAlignment(.leading)
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(width: transcriptWidth, alignment: .leading)
+            .padding(.horizontal, 13)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: transcriptCornerRadius, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: transcriptCornerRadius, style: .continuous)
+                            .fill(DeepSpace.color(DeepSpace.spaceVoidBottom, opacity: 0.6))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: transcriptCornerRadius, style: .continuous)
+                            .strokeBorder(DeepSpace.color(DeepSpace.starDust, opacity: 0.22), lineWidth: 1)
+                    )
+            )
+    }
+
+    private var transcriptWidth: CGFloat { 244 }
+    /// Same squircle rule the rest of the Deep Space surfaces use, taken from the
+    /// area's collapsed (single-line) height so it matches the capsule's feel.
+    private var transcriptCornerRadius: CGFloat { DeepSpace.cornerRadius(for: 62) }
 
     private var capsule: some View {
         HStack(spacing: 9) {

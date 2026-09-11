@@ -10,10 +10,14 @@ final class RecordingHUDController {
     private var dismissWorkItem: DispatchWorkItem?
     private var phase: HUDPhase = .done
     private var levels: [Float] = Array(repeating: 0, count: 15)
+    private var liveText: String = ""
 
     func show(_ phase: HUDPhase) {
         dismissWorkItem?.cancel()
         self.phase = phase
+        // Partial text is only meaningful while the utterance is still in play;
+        // DONE and error states must not keep the last guess on screen.
+        if !LivePreviewPolicy.keepsLiveText(phase) { liveText = "" }
 
         let panel = existingPanel()
         render()
@@ -33,17 +37,28 @@ final class RecordingHUDController {
         render()
     }
 
+    /// Feeds the live on-device recognition preview. Unlike `update(levels:)`
+    /// this changes the HUD's height, so the panel is re-measured and re-centred.
+    func update(liveText: String) {
+        guard liveText != self.liveText else { return }
+        self.liveText = liveText
+        render()
+        resizeToFitContent()
+        panel?.positionAtBottomCentre()
+    }
+
     func hide() {
         dismissWorkItem?.cancel()
         dismissWorkItem = nil
         panel?.orderOut(nil)
         levels = Array(repeating: 0, count: 15)
+        liveText = ""
     }
 
     private func existingPanel() -> FloatingPanel {
         if let panel { return panel }
         let created = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 190, height: 210))
-        let hosting = NSHostingView(rootView: NebulaHUDView(phase: phase, levels: levels))
+        let hosting = NSHostingView(rootView: NebulaHUDView(phase: phase, levels: levels, liveText: liveText))
         created.contentView = hosting
         panel = created
         hostingView = hosting
@@ -51,7 +66,7 @@ final class RecordingHUDController {
     }
 
     private func render() {
-        hostingView?.rootView = NebulaHUDView(phase: phase, levels: levels)
+        hostingView?.rootView = NebulaHUDView(phase: phase, levels: levels, liveText: liveText)
     }
 
     /// Resizes the panel to the hosting view's SwiftUI-measured fitting size so the

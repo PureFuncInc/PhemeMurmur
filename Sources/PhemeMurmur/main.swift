@@ -10,6 +10,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let audioRecorder = AudioRecorder()
     private let onboarding = OnboardingWindow()
     private var providers: [String: TranscriptionProvider] = [:]
+    /// Provider *types*, kept alongside `providers` because `FallbackProvider`
+    /// erases them and the live preview only applies to Apple's on-device engine.
+    private var providerTypes: [String: ProviderType] = [:]
     private var activeProviderName: String = ""
     private var prefix: String?
     private var voiceCommandsEnabled: Bool = false
@@ -23,6 +26,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// network leaves the click-through HUD on screen until URLSession's 60 s
     /// default timeout.
     private var transcriptionTask: Task<Void, Never>?
+    /// Live on-device recognition preview for the HUD. Only ever non-nil while
+    /// recording with the Apple provider on macOS 26+. Typed as `AnyObject` so
+    /// the stored property itself needs no availability annotation.
+    private var liveTranscriber: AnyObject?
 
     /// True from the moment the onboarding window opens until it closes
     /// (finish button or the red close button — `windowWillClose` fires on
@@ -128,11 +135,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             for (name, entry) in entries {
                 if let provider = Self.makeProvider(for: entry) {
                     providers[name] = provider
+                    providerTypes[name] = entry.type
                 } else {
                     print("Skipped provider \(name): unavailable on this macOS version")
                 }
             }
-            Self.injectBuiltInProvidersIfNeeded(into: &providers)
+            Self.injectBuiltInProvidersIfNeeded(into: &providers, types: &providerTypes)
             if let active = config.resolvedActiveProvider, providers[active] != nil {
                 activeProviderName = active
             } else if !providers.isEmpty {
@@ -187,6 +195,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
     }
 
+    /// Whether this recording should run the live text preview: Apple's
+    /// on-device provider on an OS that has the streaming Speech API.
+    private var shouldRunLivePreview: Bool {
+        LivePreviewPolicy.shouldPreview(
+            activeProviderType: providerTypes[activeProviderName],
+            osSupportsLiveTranscription: ProviderCatalog.appleAvailableOnThisSystem
+        )
+    }
+
+    private func startLiveTranscriptionIfSupported() {
+        guard shouldRunLivePreview, #available(macOS 26.0, *) else { return }
+        let transcriber = LiveSpeechTranscriber { [weak self] text in
+            self?.hud.update(liveText: text)
+        }
+        liveTranscriber = transcriber
+        transcriber.start(language: promptTemplates[activeTemplateName]?.language)
+        audioRecorder.onBuffer = { [weak transcriber] buffer in
+            transcriber?.feed(buffer)
+        }
+    }
+
+    /// Detaches the audio tap consumer and shuts the analyzer down. Idempotent,
+    /// so every recording end path can call it unconditionally.
+    private func stopLiveTranscription() {
+        audioRecorder.onBuffer = nil
+        if #available(macOS 26.0, *), let transcriber = liveTranscriber as? LiveSpeechTranscriber {
+            transcriber.stop()
+        }
+        liveTranscriber = nil
+    }
+
     private func handleToggle() {
         guard !hotkeyBlockedByOnboarding else { return }
         switch state {
@@ -225,6 +264,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hudTickTimer = nil
         recordingStartedAt = nil
         audioRecorder.onLevel = nil
+        stopLiveTranscription()
         hud.hide()
     }
 
@@ -238,6 +278,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         updateStatus("Idle")
         NSSound(named: "Funk")?.play()
         print("⛔ Transcription cancelled.")
+        stopLiveTranscription()
         hud.hide()
     }
 
@@ -279,6 +320,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             audioRecorder.onLevel = { [weak self] levels in
                 self?.hud.update(levels: levels)
             }
+            startLiveTranscriptionIfSupported()
             hud.show(.recording(elapsed: 0))
             hudTickTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self, let started = self.recordingStartedAt else { return }
@@ -297,6 +339,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hudTickTimer = nil
         recordingStartedAt = nil
         audioRecorder.onLevel = nil
+        // Stop feeding the analyzer here, before every early return below: the
+        // preview's job ends the moment the microphone does.
+        stopLiveTranscription()
 
         let result = audioRecorder.stopRecording()
         let fileURL: URL
@@ -395,12 +440,14 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private func reloadProvidersFromConfig() {
         guard let config = Config.loadConfig() else { return }
         providers.removeAll()
+        providerTypes.removeAll()
         for (n, entry) in config.resolvedProviders {
             if let provider = Self.makeProvider(for: entry) {
                 providers[n] = provider
+                providerTypes[n] = entry.type
             }
         }
-        Self.injectBuiltInProvidersIfNeeded(into: &providers)
+        Self.injectBuiltInProvidersIfNeeded(into: &providers, types: &providerTypes)
         if let active = config.resolvedActiveProvider, providers[active] != nil {
             activeProviderName = active
         } else if providers[activeProviderName] == nil {
@@ -436,11 +483,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// only Apple on-device speech on macOS 26+). Users who upgrade from an older
     /// version get these without editing config.jsonc; `ProviderCatalog.options`
     /// mirrors this rule so the settings window lists them too.
-    private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider]) {
+    private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider],
+                                                       types: inout [String: ProviderType]) {
         if #available(macOS 26.0, *), providers[ProviderCatalog.builtInAppleName] == nil {
             providers[ProviderCatalog.builtInAppleName] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
                 AppleSpeechProvider(model: model)
             }
+            types[ProviderCatalog.builtInAppleName] = .apple
         }
     }
 
@@ -565,6 +614,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func quitApp() {
         accessibilityPollTimer?.invalidate()
+        stopLiveTranscription()
         if audioRecorder.isRecording {
             _ = audioRecorder.stopRecording()
         }
