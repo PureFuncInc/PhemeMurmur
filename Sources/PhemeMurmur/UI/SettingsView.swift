@@ -12,15 +12,15 @@ struct SettingsView: View {
             Divider().overlay(DeepSpace.color(DeepSpace.starDust, opacity: 0.12))
             detail
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                .padding(22)
+                .padding(28)
         }
-        .frame(width: 640, height: 420)
+        .frame(width: 820, height: 560)
         .background(
             RadialGradient(
                 colors: [DeepSpace.color(DeepSpace.spaceVoidTop),
                          DeepSpace.color(DeepSpace.spaceVoidBottom)],
                 center: UnitPoint(x: 0.5, y: -0.1),
-                startRadius: 10, endRadius: 620
+                startRadius: 10, endRadius: 806
             )
         )
         .preferredColorScheme(.dark)
@@ -33,12 +33,12 @@ struct SettingsView: View {
                     selection = tab
                 } label: {
                     HStack(spacing: 9) {
-                        Image(systemName: tab.symbolName).frame(width: 16)
+                        Image(systemName: tab.symbolName).frame(width: 19)
                         Text(tab.title)
                         Spacer()
                     }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 13)
+                    .padding(.vertical, 10)
                     .background(selectionBackground(for: tab))
                     .foregroundStyle(selection == tab
                                      ? Color.white
@@ -48,21 +48,21 @@ struct SettingsView: View {
             }
             Spacer()
         }
-        .padding(.vertical, 16)
-        .padding(.horizontal, 10)
-        .frame(width: 152)
+        .padding(.vertical, 20)
+        .padding(.horizontal, 12)
+        .frame(width: 190)
         .background(DeepSpace.color(DeepSpace.spaceVoidBottom, opacity: 0.5))
     }
 
     @ViewBuilder
     private func selectionBackground(for tab: SettingsTab) -> some View {
         if selection == tab {
-            RoundedRectangle(cornerRadius: 8)
+            RoundedRectangle(cornerRadius: 10)
                 .fill(LinearGradient(
                     colors: [DeepSpace.color(DeepSpace.auroraCyan, opacity: 0.16),
                              DeepSpace.color(DeepSpace.auroraViolet, opacity: 0.14)],
                     startPoint: .leading, endPoint: .trailing))
-                .overlay(RoundedRectangle(cornerRadius: 8)
+                .overlay(RoundedRectangle(cornerRadius: 10)
                     .strokeBorder(DeepSpace.color(DeepSpace.auroraCyan, opacity: 0.26), lineWidth: 1))
         } else {
             Color.clear
@@ -90,12 +90,12 @@ struct SettingsView: View {
                         Spacer()
                         if let reason = option.unavailableReason {
                             Text(reason)
-                                .font(.system(size: 10))
+                                .font(.system(size: 12))
                                 .foregroundStyle(DeepSpace.color(DeepSpace.starDust, opacity: 0.7))
                         } else if option.name == store.activeProvider {
                             Text("使用中")
-                                .font(.system(size: 10, weight: .bold))
-                                .padding(.horizontal, 9).padding(.vertical, 3)
+                                .font(.system(size: 11.5, weight: .bold))
+                                .padding(.horizontal, 11).padding(.vertical, 4)
                                 .background(Capsule().fill(LinearGradient(
                                     colors: [DeepSpace.color(DeepSpace.auroraCyan),
                                              DeepSpace.color(DeepSpace.auroraViolet)],
@@ -103,7 +103,7 @@ struct SettingsView: View {
                                 .foregroundStyle(Color.black)
                         }
                     }
-                    .padding(11)
+                    .padding(14)
                     .background(rowBackground)
                     .opacity(option.isAvailable ? 1 : 0.45)
                 }
@@ -111,18 +111,18 @@ struct SettingsView: View {
                 .disabled(!option.isAvailable)
             }
             if store.activeProviderNeedsAPIKey {
-                Text("API KEY").font(.system(size: 10, weight: .semibold)).kerning(1.2)
+                Text("API KEY").font(.system(size: 11.5, weight: .semibold)).kerning(1.2)
                     .foregroundStyle(DeepSpace.color(DeepSpace.starDust, opacity: 0.8))
                 SecureField("", text: $store.apiKey)
                     .textFieldStyle(.plain)
-                    .font(.system(size: 11, design: .monospaced))
-                    .padding(8)
+                    .font(.system(size: 13, design: .monospaced))
+                    .padding(10)
                     .background(rowBackground)
                     .onSubmit { store.saveAPIKey() }
                 Button("儲存金鑰") { store.saveAPIKey() }
             } else {
                 Text("這個供應商在裝置上辨識，不需要 API Key。")
-                    .font(.system(size: 11))
+                    .font(.system(size: 13.5))
                     .foregroundStyle(DeepSpace.color(DeepSpace.starDust))
             }
             Spacer()
@@ -142,7 +142,7 @@ struct SettingsView: View {
                                 .foregroundStyle(DeepSpace.color(DeepSpace.auroraCyan))
                         }
                     }
-                    .padding(11)
+                    .padding(14)
                     .background(rowBackground)
                 }
                 .buttonStyle(.plain)
@@ -164,7 +164,7 @@ struct SettingsView: View {
                                 .foregroundStyle(DeepSpace.color(DeepSpace.auroraCyan))
                         }
                     }
-                    .padding(11)
+                    .padding(14)
                     .background(rowBackground)
                 }
                 .buttonStyle(.plain)
@@ -188,13 +188,13 @@ struct SettingsView: View {
                     if !editing { store.saveGeneral() }
                 }
                 Text(String(format: "%.3f", store.silenceThreshold))
-                    .font(.system(size: 11, design: .monospaced))
+                    .font(.system(size: 13, design: .monospaced))
             }
             HStack {
                 Text("前綴詞")
                 TextField("", text: $store.prefix)
                     .textFieldStyle(.plain)
-                    .padding(7)
+                    .padding(10)
                     .background(rowBackground)
                     .onSubmit { store.saveGeneral() }
             }
@@ -221,17 +221,17 @@ struct SettingsView: View {
 
     private func paneTitle(_ title: String, _ subtitle: String) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.system(size: 15, weight: .semibold))
-            Text(subtitle).font(.system(size: 11))
+            Text(title).font(.system(size: 19, weight: .semibold))
+            Text(subtitle).font(.system(size: 13))
                 .foregroundStyle(DeepSpace.color(DeepSpace.starDust))
         }
         .padding(.bottom, 4)
     }
 
     private var rowBackground: some View {
-        RoundedRectangle(cornerRadius: 9)
+        RoundedRectangle(cornerRadius: 12)
             .fill(DeepSpace.color(DeepSpace.starDust, opacity: 0.06))
-            .overlay(RoundedRectangle(cornerRadius: 9)
+            .overlay(RoundedRectangle(cornerRadius: 12)
                 .strokeBorder(DeepSpace.color(DeepSpace.starDust, opacity: 0.1), lineWidth: 1))
     }
 }
