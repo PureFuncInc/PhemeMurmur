@@ -38,7 +38,24 @@ enum OnboardingPage: Int, CaseIterable {
     }
 }
 
+/// What the provider page shows under the picker. Derived from the same nil
+/// check `canAdvance` makes, so the copy can never tell the user to continue
+/// while the 繼續 button is disabled.
+enum ProviderPrompt: Equatable {
+    /// The selected provider needs a key: show the SecureField.
+    case apiKeyField
+    /// The selected provider runs on-device: nothing to fill in.
+    case noKeyNeeded
+    /// Nothing on this Mac can transcribe at all — the user cannot continue.
+    case noUsableProvider
+}
+
 enum OnboardingFlow {
+
+    static func providerPrompt(providerType: ProviderType?) -> ProviderPrompt {
+        guard let providerType else { return .noUsableProvider }
+        return providerType.requiresAPIKey ? .apiKeyField : .noKeyNeeded
+    }
 
     /// `providerType` is the type of the currently selected provider (nil when no
     /// provider is selected at all). Whether a key is required — and whether the

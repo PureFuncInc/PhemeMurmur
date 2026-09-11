@@ -141,7 +141,8 @@ struct OnboardingView: View {
                     }
                 }
                 .pickerStyle(.segmented)
-                if store.activeProviderNeedsAPIKey {
+                switch OnboardingFlow.providerPrompt(providerType: store.activeProviderType) {
+                case .apiKeyField:
                     SecureField("API Key", text: $store.apiKey)
                         .textFieldStyle(.plain)
                         .font(.system(size: 11, design: .monospaced))
@@ -149,10 +150,22 @@ struct OnboardingView: View {
                         .background(RoundedRectangle(cornerRadius: 9)
                             .fill(DeepSpace.color(DeepSpace.starDust, opacity: 0.06)))
                         .onSubmit { store.saveAPIKey() }
-                } else {
+                case .noKeyNeeded:
                     Text("不需要 API Key，直接繼續即可。")
                         .font(.system(size: 11))
                         .foregroundStyle(DeepSpace.color(DeepSpace.starDust))
+                case .noUsableProvider:
+                    VStack(spacing: 6) {
+                        Text("這台 Mac 上沒有可以使用的轉錄服務：Apple 裝置端辨識需要 macOS 26，設定檔裡也沒有任何雲端供應商。")
+                            .font(.system(size: 11))
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .foregroundStyle(DeepSpace.color(DeepSpace.nebulaPink))
+                        Text("請先在設定檔加入 OpenAI 或 Gemini 供應商，再重新開啟 PhemeMurmur：\n\(Config.configPath)")
+                            .font(.system(size: 9.5, design: .monospaced))
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(DeepSpace.color(DeepSpace.starDust))
+                    }
                 }
             }
             .frame(maxWidth: 320)

@@ -99,4 +99,30 @@ final class OnboardingFlowTests: XCTestCase {
         XCTAssertTrue(OnboardingFlow.hotkeyBlocked(onboardingActive: true, reachedTryIt: false))
         XCTAssertFalse(OnboardingFlow.hotkeyBlocked(onboardingActive: true, reachedTryIt: true))
     }
+    // MARK: - Provider page copy
+
+    func testProviderPromptAsksForAKeyOnlyWhenTheProviderNeedsOne() {
+        XCTAssertEqual(OnboardingFlow.providerPrompt(providerType: .openai), .apiKeyField)
+        XCTAssertEqual(OnboardingFlow.providerPrompt(providerType: .gemini), .apiKeyField)
+        XCTAssertEqual(OnboardingFlow.providerPrompt(providerType: .apple), .noKeyNeeded)
+    }
+
+    /// The dead end: with no usable provider the page used to say "just continue"
+    /// while canAdvance kept 繼續 disabled.
+    func testProviderPromptReportsTheDeadEndWhenNothingIsUsable() {
+        XCTAssertEqual(OnboardingFlow.providerPrompt(providerType: nil), .noUsableProvider)
+    }
+
+    func testNoUsableProviderPromptAgreesWithTheDisabledButton() {
+        for type in [ProviderType?.none, .some(.openai), .some(.apple)] {
+            let prompt = OnboardingFlow.providerPrompt(providerType: type)
+            let canAdvance = OnboardingFlow.canAdvance(from: .provider,
+                                                       permissions: [],
+                                                       providerType: type,
+                                                       apiKey: "sk-real-key",
+                                                       didRecordOnce: false)
+            XCTAssertEqual(prompt == .noUsableProvider, !canAdvance,
+                           "the copy must never invite the user to continue while 繼續 is disabled")
+        }
+    }
 }
