@@ -1,12 +1,25 @@
 import Foundation
 
 struct HUDPresentation {
-    let coreTint: DeepSpace.RGB
+    /// Tint of the reactor core and its beams.
+    let coreTint: MarkIII.RGB
+    /// Tint of the ticked bezel, the sweeping arc and the framing brackets.
+    let ringTint: MarkIII.RGB
     let capsuleText: String
-    /// Seconds per full rotation of the orbital ring.
+    /// Seconds per full rotation of the sweeping arc. Larger is slower; the
+    /// ticked bezel takes four times as long again.
     let ringSpeed: Double
     /// Nil means the HUD stays until the next phase arrives.
     let autoDismissAfter: TimeInterval?
+    /// Failure flickers its label like a fault light; the other phases hold steady.
+    var flickers: Bool = false
+
+    /// Shortest time this phase stays on screen before the next one may replace
+    /// it. On-device recognition can finish in well under a tenth of a second,
+    /// which would otherwise flash TRANSCRIBING for a few frames and read as a
+    /// glitch rather than a state. Only delays the HUD — the transcribed text is
+    /// pasted as soon as it arrives either way.
+    var minimumDwell: TimeInterval = 0
 
     /// The monospaced + letter-spaced capsule treatment is designed for the
     /// English telegraphic states (LISTENING / TRANSCRIBING / DONE). Chinese
@@ -35,31 +48,42 @@ enum HUDPhase {
         switch self {
         case .recording(let elapsed):
             return HUDPresentation(
-                coreTint: DeepSpace.auroraViolet,
+                coreTint: MarkIII.hot,
+                ringTint: MarkIII.hot,
                 capsuleText: "LISTENING · \(Self.clock(elapsed)) · ESC",
-                ringSpeed: 4.0,
+                ringSpeed: 7.0,
                 autoDismissAfter: nil
             )
         case .transcribing(let provider):
             return HUDPresentation(
-                coreTint: DeepSpace.auroraCyan,
+                coreTint: MarkIII.gold,
+                ringTint: MarkIII.gold,
                 capsuleText: "TRANSCRIBING · \(provider.uppercased()) · ESC",
-                ringSpeed: 1.4,
-                autoDismissAfter: nil
+                ringSpeed: 3.0,
+                autoDismissAfter: nil,
+                minimumDwell: 0.45
             )
         case .done:
             return HUDPresentation(
-                coreTint: DeepSpace.auroraCyan,
+                coreTint: MarkIII.arc,
+                ringTint: MarkIII.arc,
                 capsuleText: "DONE",
-                ringSpeed: 4.0,
-                autoDismissAfter: 1.2
+                // Done is the calmest state: the instrument is winding down, so
+                // it turns slower than anything else.
+                ringSpeed: 14.0,
+                // The text is already in the document by now, so this is a
+                // glance of confirmation, not something to read. Anything longer
+                // just sits in front of what the user is looking at.
+                autoDismissAfter: 0.7
             )
         case .failed(let message):
             return HUDPresentation(
-                coreTint: DeepSpace.nebulaPink,
+                coreTint: MarkIII.crimson,
+                ringTint: MarkIII.crimson,
                 capsuleText: message,
-                ringSpeed: 6.0,
-                autoDismissAfter: 3.0
+                ringSpeed: 10.0,
+                autoDismissAfter: 3.0,
+                flickers: true
             )
         }
     }

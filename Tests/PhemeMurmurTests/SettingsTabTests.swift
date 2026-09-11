@@ -16,10 +16,25 @@ final class SettingsTabTests: XCTestCase {
         XCTAssertEqual(SettingsTab.diagnostics.title, "診斷")
     }
 
-    func testEverySymbolNameResolvesToASystemSymbol() {
+    func testEveryTabHasARailGlyph() {
         for tab in SettingsTab.allCases {
-            XCTAssertNotNil(NSImage(systemSymbolName: tab.symbolName, accessibilityDescription: nil),
-                            "\(tab) has an invalid SF Symbol: \(tab.symbolName)")
+            XCTAssertFalse(tab.glyph.isEmpty, "\(tab) has no rail glyph")
+        }
+        // The glyphs are the rail's only per-tab marker, so a duplicate would
+        // make two channels indistinguishable at a glance.
+        let glyphs = SettingsTab.allCases.map(\.glyph)
+        XCTAssertEqual(Set(glyphs).count, glyphs.count, "rail glyphs must be unique")
+    }
+
+    func testChannelCodesAreNumberedInRailOrder() {
+        XCTAssertEqual(SettingsTab.allCases.map(\.channelCode),
+                       ["CH-01 / TRANSCRIBE", "CH-02 / TRIGGER", "CH-03 / PROTOCOL",
+                        "CH-04 / SYSTEM", "CH-05 / DIAGNOSTIC"])
+    }
+
+    func testEveryTabHasASubtitle() {
+        for tab in SettingsTab.allCases {
+            XCTAssertFalse(tab.subtitle.isEmpty, "\(tab) has no pane subtitle")
         }
     }
 }

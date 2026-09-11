@@ -40,7 +40,11 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
         w.titleVisibility = .hidden
         w.titlebarAppearsTransparent = true
         w.isMovableByWindowBackground = true
-        w.backgroundColor = DeepSpace.nsColor(DeepSpace.spaceVoidBottom)
+        w.backgroundColor = .clear
+        w.isOpaque = false
+        // Same reason as the settings window: a square window shadow would
+        // square off the plate's chamfered corners.
+        w.hasShadow = false
         w.isReleasedWhenClosed = false
         w.delegate = self
         w.level = .floating

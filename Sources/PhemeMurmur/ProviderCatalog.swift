@@ -7,6 +7,13 @@ struct ProviderOption: Equatable {
     let type: ProviderType
     /// False when this macOS version cannot run the provider at all.
     let isAvailable: Bool
+    /// Secondary line under the provider name in the settings console: the
+    /// model this provider would actually call, or a plain-language note for
+    /// the on-device engine.
+    var detail: String {
+        if type == .apple { return "裝置端辨識" }
+        return type.fallbackChain.first ?? type.rawValue
+    }
 
     /// User-facing reason shown next to an unusable provider, so it reads as
     /// disabled rather than silently doing nothing when tapped.

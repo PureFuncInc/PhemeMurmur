@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 enum OnboardingPage: Int, CaseIterable {
@@ -8,32 +9,47 @@ enum OnboardingPage: Int, CaseIterable {
 
     var kicker: String {
         switch self {
-        case .welcome: return "STEP 01 / 04"
-        case .permissions: return "STEP 02 / 04"
-        case .provider: return "STEP 03 / 04"
-        case .tryIt: return "STEP 04 / 04"
+        case .welcome: return "BOOT SEQ · 1 OF 4"
+        case .permissions: return "BOOT SEQ · 2 OF 4"
+        case .provider: return "BOOT SEQ · 3 OF 4"
+        case .tryIt: return "BOOT SEQ · 4 OF 4"
         }
     }
 
     var title: String {
         switch self {
-        case .welcome: return "PhemeMurmur"
-        case .permissions: return "授予兩項權限"
-        case .provider: return "設定轉錄服務"
-        case .tryIt: return "試錄一次"
+        case .welcome: return "系統上線"
+        case .permissions: return "解鎖兩道權限"
+        case .provider: return "指定轉錄引擎"
+        case .tryIt: return "校準一次"
         }
+    }
+
+    /// The boot sequence gives the opening page a larger title than the rest.
+    var titleSize: CGFloat {
+        switch self {
+        case .welcome: return 30
+        case .permissions, .provider: return 24
+        case .tryIt: return 26
+        }
+    }
+
+    /// Label on the advance button. The last page completes the calibration
+    /// rather than continuing to another step.
+    var ctaTitle: String {
+        self == .tryIt ? "完成校準" : "繼續"
     }
 
     var body: String {
         switch self {
         case .welcome:
-            return "按下快捷鍵說話，再按一次就把文字送進你正在打字的地方。\n先花 30 秒走完四個步驟。"
+            return "「早安。語音通道已就緒。」\n按下快捷鍵說話，再按一次，文字就會出現在你正在打字的地方。\n先花 30 秒走完這四道程序。"
         case .permissions:
-            return "PhemeMurmur 需要這兩項才能聽見你的聲音、並把文字送進輸入框。"
+            return "沒有這兩項，我聽不見你，也沒辦法幫你把字送出去。"
         case .provider:
-            return "選一個語音轉文字的供應商。雲端服務需要 API Key，Apple 在裝置上辨識則不用。"
+            return "雲端引擎需要 API Key；Apple 在裝置上辨識則不用。"
         case .tryIt:
-            return "按一次快捷鍵，說一句話，再按一次結束。\n看到文字出現就完成了。"
+            return "按一次快捷鍵，說一句話，再按一次結束。\n看到文字出現，校準就完成了。"
         }
     }
 }

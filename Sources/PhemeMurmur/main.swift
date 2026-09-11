@@ -22,6 +22,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let hud = RecordingHUDController()
     private var recordingStartedAt: Date?
     private var hudTickTimer: Timer?
+    private var iconAnimationTimer: Timer?
+    private var iconAnimationStartedAt: Date?
     /// The in-flight transcription, so Esc can cancel it. Otherwise a stalled
     /// network leaves the click-through HUD on screen until URLSession's 60 s
     /// default timeout.
@@ -110,23 +112,24 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusMenu = NSMenu()
         statusMenu.delegate = self
 
-        statusMenuItem = NSMenuItem(title: "Status: idle", action: nil, keyEquivalent: "")
-        statusMenuItem.isEnabled = false
+        statusMenuItem = MarkIIIMenu.statusHeader()
         statusMenu.addItem(statusMenuItem)
 
-        statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(Self.makeMenuItem(title: "設定…",
-                                             action: #selector(openSettings),
-                                             target: self,
-                                             keyEquivalent: ","))
-        statusMenu.addItem(NSMenuItem.separator())
-        statusMenu.addItem(Self.makeMenuItem(title: "關於 PhemeMurmur",
-                                             action: #selector(showAboutPanel),
-                                             target: self))
-        statusMenu.addItem(Self.makeMenuItem(title: "結束",
-                                             action: #selector(quitApp),
-                                             target: self,
-                                             keyEquivalent: "q"))
+        statusMenu.addItem(MarkIIIMenu.separator())
+        statusMenu.addItem(MarkIIIMenu.item(title: "設定…",
+                                            shortcut: "⌘,",
+                                            action: #selector(openSettings),
+                                            target: self,
+                                            keyEquivalent: ","))
+        statusMenu.addItem(MarkIIIMenu.separator())
+        statusMenu.addItem(MarkIIIMenu.item(title: "關於 PhemeMurmur",
+                                            action: #selector(showAboutPanel),
+                                            target: self))
+        statusMenu.addItem(MarkIIIMenu.item(title: "結束",
+                                            shortcut: "⌘Q",
+                                            action: #selector(quitApp),
+                                            target: self,
+                                            keyEquivalent: "q"))
         statusItem.menu = statusMenu
 
         // Load config
@@ -321,6 +324,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 self?.hud.update(levels: levels)
             }
             startLiveTranscriptionIfSupported()
+            // Decided before the first frame so the HUD reserves its transcript
+            // slot up front rather than growing when partial text arrives.
+            hud.reservesTranscriptArea = shouldRunLivePreview
+            hud.pastedText = ""
             hud.show(.recording(elapsed: 0))
             hudTickTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 guard let self, let started = self.recordingStartedAt else { return }
@@ -413,6 +420,9 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     PasteService.pasteText(output)
                     self.state = .idle
                     self.updateStatus("Idle")
+                    // Shown on the done card so the last thing on screen is what
+                    // actually landed in the document, not the live guess.
+                    self.hud.pastedText = output
                     self.hud.show(.done)
                     NotificationCenter.default.post(name: .phemeDidTranscribeOnce, object: nil)
                 }
@@ -546,8 +556,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     private func updateStatus(_ text: String) {
-        statusMenuItem?.title = "Status: \(text)"
+        // The header is telemetry, so the state goes up in mono caps and the
+        // provider plus hotkey sit underneath as the current configuration.
+        MarkIIIMenu.updateStatus("STATUS · \(text.uppercased())",
+                                 context: menuContextLine())
+        statusMenuItem?.view?.needsDisplay = true
         updateIcon()
+    }
+
+    /// "OPENAI ▪ RIGHT SHIFT" — what this app would do if you pressed the key
+    /// right now.
+    private func menuContextLine() -> String {
+        let provider = activeProviderName.isEmpty ? "—" : activeProviderName.uppercased()
+        return "\(provider) ▪ \(hotkeyManager.key.shortName.uppercased())"
     }
 
     private static func truncate(_ message: String, limit: Int = 60) -> String {
@@ -559,25 +580,80 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return flattened[..<idx] + "…"
     }
 
+    // MARK: - Menu bar icon
+
+    /// Which artwork the menu bar is currently showing. Errors are a transient
+    /// overlay on top of the state machine, so they need their own case rather
+    /// than another `State`.
+    private enum IconState: Equatable {
+        case idle, recording, transcribing, error
+    }
+
+    private var iconState: IconState = .idle
+
     private func updateIcon() {
-        switch state {
-        case .idle:
-            setWaveformIcon()
-        case .recording:
-            setIcon(symbolName: "record.circle", color: .systemRed)
-        case .transcribing:
-            setIcon(symbolName: "text.bubble", color: .systemBlue)
+        apply(iconState: {
+            switch state {
+            case .idle: return .idle
+            case .recording: return .recording
+            case .transcribing: return .transcribing
+            }
+        }())
+    }
+
+    private func apply(iconState newState: IconState) {
+        iconState = newState
+        // Only the animated states need a timer; idle and error are still frames.
+        switch newState {
+        case .recording, .transcribing:
+            startIconAnimation()
+        case .idle, .error:
+            stopIconAnimation()
+            renderIcon()
         }
     }
 
-    private func setWaveformIcon() {
+    /// Drives the recording pulse and the transcribing spinner at 20 fps.
+    /// Redrawing an 18pt glyph that often is cheap enough that caching frames
+    /// is not worth the complexity.
+    private func startIconAnimation() {
+        if iconAnimationTimer == nil {
+            iconAnimationStartedAt = Date()
+            iconAnimationTimer = Timer.scheduledTimer(withTimeInterval: 1.0 / 20.0,
+                                                      repeats: true) { [weak self] _ in
+                self?.renderIcon()
+            }
+        }
+        renderIcon()
+    }
+
+    private func stopIconAnimation() {
+        iconAnimationTimer?.invalidate()
+        iconAnimationTimer = nil
+        iconAnimationStartedAt = nil
+    }
+
+    private func renderIcon() {
         guard let button = statusItem?.button else { return }
-        button.image = MenuBarIcon.appIcon() ?? MenuBarIcon.waveformTemplate()
-        button.title = ""
+        let elapsed = iconAnimationStartedAt.map { Date().timeIntervalSince($0) } ?? 0
+        switch iconState {
+        case .idle:
+            button.image = MenuBarIcon.appIcon()
+        case .recording:
+            button.image = MenuBarIcon.recordingGlyph(
+                phase: MenuBarIcon.pulsePhase(at: elapsed))
+        case .transcribing:
+            button.image = MenuBarIcon.transcribingGlyph(
+                angle: MenuBarIcon.spinAngle(at: elapsed))
+        case .error:
+            button.image = MenuBarIcon.errorGlyph()
+        }
+        // A missing bundle icon would otherwise leave an invisible status item.
+        button.title = button.image == nil ? "🗣️" : ""
     }
 
     private func showErrorIcon(persistent: Bool = false) {
-        setIcon(symbolName: "exclamationmark.triangle", color: .systemOrange)
+        apply(iconState: .error)
         if !persistent {
             DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
                 guard let self, self.state == .idle else { return }
@@ -586,34 +662,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
-    private func setIcon(symbolName: String, color: NSColor?) {
-        guard let button = statusItem?.button else { return }
-        let sizeConfig = NSImage.SymbolConfiguration(pointSize: 18, weight: .regular, scale: .medium)
-        let config: NSImage.SymbolConfiguration
-        if let color {
-            config = sizeConfig.applying(NSImage.SymbolConfiguration(paletteColors: [color]))
-        } else {
-            config = sizeConfig
-        }
-        if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
-            .withSymbolConfiguration(config) {
-            image.isTemplate = (color == nil)
-            button.image = image
-            button.title = ""
-        } else {
-            button.image = nil
-            button.title = "🗣️"
-        }
-    }
-
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
+        // The provider or hotkey can change while the menu is closed, so the
+        // header is refreshed on the way open rather than only on state changes.
+        MarkIIIMenu.updateStatus(MarkIIIMenu.currentStatusLine, context: menuContextLine())
+        statusMenuItem?.view?.needsDisplay = true
         // Status text is kept current by updateStatus() as state changes; the
         // submenus that used to need refreshing here are gone.
     }
 
     @objc private func quitApp() {
         accessibilityPollTimer?.invalidate()
+        stopIconAnimation()
         stopLiveTranscription()
         if audioRecorder.isRecording {
             _ = audioRecorder.stopRecording()
