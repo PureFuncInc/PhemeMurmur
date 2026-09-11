@@ -4,6 +4,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
     private var statusMenuItem: NSMenuItem!
+    private var updateMenuItem: NSMenuItem!
+    private var updateCheckTimer: Timer?
     private var currentHotkey: HotkeyKey = .rightShift
 
     private let hotkeyManager = HotkeyManager()
@@ -122,6 +124,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                             target: self,
                                             keyEquivalent: ","))
         statusMenu.addItem(MarkIIIMenu.separator())
+        updateMenuItem = MarkIIIMenu.item(title: Self.checkForUpdatesTitle,
+                                          action: #selector(checkForUpdates),
+                                          target: self)
+        statusMenu.addItem(updateMenuItem)
         statusMenu.addItem(MarkIIIMenu.item(title: "關於 PhemeMurmur",
                                             action: #selector(showAboutPanel),
                                             target: self))
@@ -194,6 +200,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             }
             pollForAccessibility()
         }
+
+        startBackgroundUpdateChecks()
 
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
     }
@@ -672,8 +680,53 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // submenus that used to need refreshing here are gone.
     }
 
+    // MARK: - Updates
+
+    private static let checkForUpdatesTitle = "檢查更新…"
+
+    /// Re-checks in the background this often. The app is a menu bar extra that
+    /// can run for weeks, so waiting for a relaunch to notice a release would
+    /// mean never noticing one.
+    private static let updateCheckInterval: TimeInterval = 6 * 60 * 60
+
+    @objc private func checkForUpdates() {
+        // Menu actions already arrive on the main thread; the hop just satisfies
+        // the compiler's isolation check for this @objc entry point.
+        Task { @MainActor in UpdatePresenter.checkAndPresent() }
+    }
+
+    /// Quietly looks for a newer release and, if there is one, restates the menu
+    /// row so the user sees it without having to go looking. Failures stay
+    /// silent: they are nearly always a dev build whose version is not a release
+    /// tag, or a flaky network, and neither deserves an interruption.
+    private func startBackgroundUpdateChecks() {
+        // A build outside /Applications cannot install over itself, so offering
+        // would be misleading; it keeps the plain "check" row instead.
+        guard AppUpdater.canSelfUpdate else { return }
+        refreshUpdateAvailability()
+        updateCheckTimer = Timer.scheduledTimer(withTimeInterval: Self.updateCheckInterval,
+                                                repeats: true) { [weak self] _ in
+            self?.refreshUpdateAvailability()
+        }
+    }
+
+    private func refreshUpdateAvailability() {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let title: String
+            switch await UpdateChecker().check() {
+            case .updateAvailable(_, let latest, _):
+                title = "更新到 \(latest)"
+            case .upToDate, .failed:
+                title = Self.checkForUpdatesTitle
+            }
+            MarkIIIMenu.setTitle(title, on: self.updateMenuItem)
+        }
+    }
+
     @objc private func quitApp() {
         accessibilityPollTimer?.invalidate()
+        updateCheckTimer?.invalidate()
         stopIconAnimation()
         stopLiveTranscription()
         if audioRecorder.isRecording {

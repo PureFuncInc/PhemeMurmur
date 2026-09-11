@@ -124,7 +124,9 @@ enum MarkIIIMenu {
 
     fileprivate final class RowView: PlateView {
 
-        private let title: String
+        /// Mutable so a row can restate itself — the update row becomes
+        /// "更新到 X.Y.Z" once a check has found one.
+        var title: String { didSet { needsDisplay = true } }
         private let shortcut: String
         private var hovering = false
 
@@ -196,6 +198,13 @@ extension MarkIIIMenu {
 
     /// The status line as last set, so a refresh can update only the context.
     static var currentStatusLine: String { StatusHeaderView.statusLine }
+
+    /// Restates a row built by `item(title:…)`. No-op for a menu item whose view
+    /// is not one of ours, so callers do not have to type-check.
+    static func setTitle(_ title: String, on item: NSMenuItem?) {
+        guard let row = item?.view as? RowView else { return }
+        row.title = title
+    }
 }
 
 extension NSBezierPath {

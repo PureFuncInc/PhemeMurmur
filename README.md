@@ -21,9 +21,42 @@ macOS menu bar app — press Right Shift to record, transcribe speech via OpenAI
 
 ## Install
 
+No checkout needed — this downloads the latest release, installs it to
+`/Applications`, and launches it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/PureFuncInc/PhemeMurmur/main/install.sh | bash
+```
+
+From a source checkout instead:
+
 ```bash
 make clean && make install
 ```
+
+`make install` keeps whatever onboarding state you already had. Pass `ONBOARD=1`
+to replay the boot sequence.
+
+## Updating
+
+PhemeMurmur checks for a new release on launch and every six hours, and the
+menu bar shows **更新到 X.Y.Z** when one is out. Choosing it quits the app,
+installs the new version and relaunches it. There is also a **檢查更新…** item
+to look right now.
+
+Self-updating only works for the copy in `/Applications` — that is the one the
+installer replaces. A build running from anywhere else is pointed at the release
+page instead.
+
+## Releasing
+
+```bash
+make release VERSION=vX.Y.Z
+```
+
+Runs the tests, tags, builds, zips, publishes the GitHub release and uploads the
+architecture's zip. The tag is what stamps `CFBundleShortVersionString`, which
+is the version the updater compares against.
 
 ## Setup
 

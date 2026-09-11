@@ -8,7 +8,7 @@ DIST_DIR  = dist
 ARCH      = $(shell uname -m)
 ZIP_NAME  = $(APP_NAME)-macOS-$(ARCH).zip
 
-.PHONY: build app run clean icon install
+.PHONY: build app run clean icon install release
 
 build:
 	swift build -c release
@@ -39,7 +39,19 @@ app: build
 		/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $$COUNT" $(CONTENTS)/Info.plist; \
 		echo "Injected CFBundleVersion=$$COUNT"; \
 	fi
+	@TAG=$$(git describe --tags --abbrev=0 2>/dev/null); \
+	if [ -n "$$TAG" ]; then \
+		VER=$${TAG#v}; \
+		/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $$VER" $(CONTENTS)/Info.plist; \
+		echo "Injected CFBundleShortVersionString=$$VER"; \
+	else \
+		echo "No git tag found; leaving CFBundleShortVersionString as-is"; \
+	fi
 	cp Resources/AppIcon.icns $(CONTENTS)/Resources/AppIcon.icns
+	@# The in-app updater runs this exact script, so the app ships the copy it
+	@# was built with rather than fetching one at update time. Single source of
+	@# truth: install.sh in the repo root.
+	cp install.sh $(CONTENTS)/Resources/install.sh
 	mkdir -p $(CONTENTS)/Resources/Fonts
 	cp Resources/Fonts/*.ttf $(CONTENTS)/Resources/Fonts/
 	cp Resources/Fonts/OFL-*.txt $(CONTENTS)/Resources/Fonts/
@@ -73,3 +85,35 @@ install: app
 
 clean:
 	rm -rf .build $(APP_BUNDLE) $(DIST_DIR)
+
+# Half-automated release: tag first, so `git describe` in `app` embeds the
+# about-to-publish version, then build, zip, publish and upload.
+#
+# Usage: make release VERSION=vX.Y.Z
+#
+# gh targets PureFuncInc/PhemeMurmur with the echoulen token, because the
+# machine's active gh account cannot resolve that repo.
+release:
+	@if [ -z "$(VERSION)" ]; then echo "Usage: make release VERSION=vX.Y.Z"; exit 1; fi
+	@# Retrying after a partial failure? A local tag from the prior run lingers.
+	@if git rev-parse --verify --quiet "refs/tags/$(VERSION)" >/dev/null; then \
+		echo "Tag $(VERSION) already exists locally. If retrying a failed release, first run: git tag -d $(VERSION)"; \
+		exit 1; \
+	fi
+	swift test
+	git tag $(VERSION)
+	$(MAKE) app
+	rm -rf $(DIST_DIR)
+	mkdir -p $(DIST_DIR)
+	ditto -c -k --sequesterRsrc --keepParent $(APP_BUNDLE) $(DIST_DIR)/$(ZIP_NAME)
+	rm -rf $(APP_BUNDLE)
+	git push origin $(VERSION)
+	@export GH_TOKEN=$$(gh auth token --user echoulen); \
+	gh release create $(VERSION) --repo PureFuncInc/PhemeMurmur --title "$(VERSION)" \
+		--generate-notes --target "$$(git rev-parse HEAD)"; \
+	BODY=$$(gh release view $(VERSION) --repo PureFuncInc/PhemeMurmur --json body -q .body); \
+	{ printf '## 安裝\n\n```\ncurl -fsSL https://raw.githubusercontent.com/PureFuncInc/PhemeMurmur/main/install.sh | bash\n```\n\n已安裝的使用者可以直接從選單列的「檢查更新…」更新。\n\n---\n\n'; \
+	  printf '%s\n' "$$BODY"; } > $(DIST_DIR)/release-notes.md; \
+	gh release edit $(VERSION) --repo PureFuncInc/PhemeMurmur --notes-file $(DIST_DIR)/release-notes.md; \
+	gh release upload $(VERSION) --repo PureFuncInc/PhemeMurmur $(DIST_DIR)/$(ZIP_NAME) --clobber
+	@echo "Released $(VERSION)"

@@ -66,6 +66,11 @@ struct AppleSpeechProvider: TranscriptionProvider {
             text = converted
         }
 
+        // This recogniser only ever produces full stops, so its punctuation is
+        // dropped rather than left half-done. The cloud providers punctuate
+        // properly and keep theirs.
+        text = TranscriptPunctuation.strip(text)
+
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.isEmpty {
             return "__SILENCE__"

@@ -81,6 +81,9 @@ final class LiveSpeechTranscriber {
                            let converted = text.applyingTransform(StringTransform(rawValue: "Hans-Hant"), reverse: false) {
                             text = converted
                         }
+                        // Same rule as the final pass, so the preview and the
+                        // pasted text cannot disagree about punctuation.
+                        text = TranscriptPunctuation.strip(text)
                         // Volatile results cover only the not-yet-committed tail,
                         // so the preview is "everything finalised" + "current guess".
                         if result.isFinal {
