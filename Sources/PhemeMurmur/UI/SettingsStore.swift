@@ -1,5 +1,42 @@
 import SwiftUI
 
+/// One free-text settings field that can hold an edit the user has not saved
+/// yet. Pure value type, so the reload / save / discard rules are testable
+/// without touching the config file.
+struct EditableField: Equatable {
+
+    /// What the UI shows and the user types into.
+    var value: String = ""
+
+    /// What was last read from (or written to) the config file.
+    private(set) var loaded: String = ""
+
+    /// True while the field holds an edit that is not on disk.
+    var isDirty: Bool { value != loaded }
+
+    /// `reload()`: adopt the value on disk, unless the user has an unsaved edit —
+    /// opening the settings window must not wipe a half-typed API key in the
+    /// onboarding window (both share one store).
+    mutating func adopt(fromDisk: String) {
+        if !isDirty { value = fromDisk }
+        loaded = fromDisk
+    }
+
+    /// The value was just written to disk, or the field was replaced wholesale
+    /// (switching provider): `newValue` becomes the new baseline.
+    mutating func commit(_ newValue: String) {
+        value = newValue
+        loaded = newValue
+    }
+
+    /// The window closed without saving: throw the edit away, so it can neither
+    /// be shown as if it were in effect nor be written out by a later save of a
+    /// neighbouring field.
+    mutating func discard() {
+        value = loaded
+    }
+}
+
 /// Bridges the SwiftUI settings UI to the existing jsonc-backed Config. Reads on
 /// init, writes through the same Config helpers the menu used to call.
 final class SettingsStore: ObservableObject {
@@ -8,28 +45,32 @@ final class SettingsStore: ObservableObject {
     /// in the config file, each flagged with whether this macOS version supports it.
     @Published var providerOptions: [ProviderOption] = []
     @Published var activeProvider: String = ""
-    @Published var apiKey: String = ""
+    @Published private var apiKeyEdit = EditableField()
     @Published var hotkey: HotkeyKey = .rightShift
     @Published var templateNames: [String] = []
     @Published var activeTemplate: String = Config.defaultPromptTemplateName
     @Published var launchAtLoginEnabled: Bool = false
     @Published var voiceCommands: Bool = false
     @Published var silenceThreshold: Double = 0
-    @Published var prefix: String = ""
+    @Published private var prefixEdit = EditableField()
+
+    /// Free-text fields, backed by `EditableField` so an unsaved edit survives a
+    /// `reload()` but is discarded when the window closes.
+    var apiKey: String {
+        get { apiKeyEdit.value }
+        set { apiKeyEdit.value = newValue }
+    }
+
+    var prefix: String {
+        get { prefixEdit.value }
+        set { prefixEdit.value = newValue }
+    }
 
     /// Called after any change that the AppDelegate must react to (provider swap,
     /// hotkey change, template change). Set by AppDelegate when it creates the store.
     var onChange: (() -> Void)?
 
     private let launchAtLogin = LaunchAtLogin()
-
-    /// Last values read from disk, used to tell "the user has not touched this
-    /// field" from "the user typed something that is not saved yet". `reload()`
-    /// refreshes a field only in the former case, so opening the settings window
-    /// cannot wipe a half-typed API key in the onboarding window (both share this
-    /// store).
-    private var loadedAPIKey = ""
-    private var loadedPrefix = ""
 
     /// The type of the selected provider, or nil when nothing usable is selected.
     var activeProviderType: ProviderType? {
@@ -39,11 +80,6 @@ final class SettingsStore: ObservableObject {
     /// Whether the selected provider needs an API key at all.
     var activeProviderNeedsAPIKey: Bool {
         activeProviderType?.requiresAPIKey ?? false
-    }
-
-    /// Keeps `current` when it holds an unsaved edit, otherwise adopts `fromDisk`.
-    static func mergeEditable(current: String, lastLoaded: String, fromDisk: String) -> String {
-        current == lastLoaded ? fromDisk : current
     }
 
     init() {
@@ -58,17 +94,13 @@ final class SettingsStore: ObservableObject {
             appleAvailable: ProviderCatalog.appleAvailableOnThisSystem
         )
         activeProvider = ProviderCatalog.resolveActive(config.resolvedActiveProvider, in: providerOptions)
-        let diskKey = entries[activeProvider]?.apiKey ?? ""
-        apiKey = Self.mergeEditable(current: apiKey, lastLoaded: loadedAPIKey, fromDisk: diskKey)
-        loadedAPIKey = diskKey
+        apiKeyEdit.adopt(fromDisk: entries[activeProvider]?.apiKey ?? "")
         hotkey = config.resolvedHotkey
         templateNames = (config.promptTemplates ?? [:]).keys.sorted()
         activeTemplate = config.activePromptTemplate ?? Config.defaultPromptTemplateName
         voiceCommands = config.resolvedVoiceCommands
         silenceThreshold = config.silenceThreshold ?? 0
-        let diskPrefix = config.prefix ?? ""
-        prefix = Self.mergeEditable(current: prefix, lastLoaded: loadedPrefix, fromDisk: diskPrefix)
-        loadedPrefix = diskPrefix
+        prefixEdit.adopt(fromDisk: config.prefix ?? "")
         launchAtLogin.refresh()
         launchAtLoginEnabled = launchAtLogin.state == .enabled
     }
@@ -78,16 +110,14 @@ final class SettingsStore: ObservableObject {
     func selectProvider(_ name: String) {
         guard providerOptions.contains(where: { $0.name == name && $0.isAvailable }) else { return }
         activeProvider = name
-        let diskKey = Config.loadConfig()?.resolvedProviders[name]?.apiKey ?? ""
-        apiKey = diskKey
-        loadedAPIKey = diskKey
+        apiKeyEdit.commit(Config.loadConfig()?.resolvedProviders[name]?.apiKey ?? "")
         Config.saveActiveProvider(name)
         onChange?()
     }
 
     func saveAPIKey() {
         _ = Config.saveAPIKey(providerName: activeProvider, apiKey: apiKey)
-        loadedAPIKey = apiKey
+        apiKeyEdit.commit(apiKey)
         onChange?()
     }
 
@@ -107,8 +137,17 @@ final class SettingsStore: ObservableObject {
         Config.saveVoiceCommands(voiceCommands)
         Config.saveSilenceThreshold(silenceThreshold)
         Config.savePrefix(prefix)
-        loadedPrefix = prefix
+        prefixEdit.commit(prefix)
         onChange?()
+    }
+
+    /// Drops edits the user typed but never saved, so an abandoned value neither
+    /// lingers on screen as if it were in effect nor gets written out later by a
+    /// save of a neighbouring field (`saveGeneral` writes prefix alongside the
+    /// voice-commands toggle). Called when either window closes.
+    func discardUnsavedEdits() {
+        apiKeyEdit.discard()
+        prefixEdit.discard()
     }
 
     func toggleLaunchAtLogin() {

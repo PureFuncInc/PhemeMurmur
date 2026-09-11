@@ -59,17 +59,66 @@ final class ProviderCatalogTests: XCTestCase {
         XCTAssertEqual(ProviderCatalog.resolveActive("Apple", in: options), "")
     }
 
-    // MARK: - Unsaved edits survive a reload
+    // MARK: - Unsaved edits
 
     func testReloadAdoptsDiskValueWhenTheFieldWasUntouched() {
-        XCTAssertEqual(SettingsStore.mergeEditable(current: "old", lastLoaded: "old", fromDisk: "new"),
-                       "new")
+        var field = EditableField()
+        field.adopt(fromDisk: "old")
+        field.adopt(fromDisk: "new")
+        XCTAssertEqual(field.value, "new")
     }
 
+    /// The case IMPORTANT 5 protects: the settings window reloading the store
+    /// while onboarding is still open must not wipe a half-typed key.
     func testReloadKeepsAHalfTypedValue() {
-        XCTAssertEqual(SettingsStore.mergeEditable(current: "sk-typ", lastLoaded: "", fromDisk: ""),
-                       "sk-typ")
-        XCTAssertEqual(SettingsStore.mergeEditable(current: "sk-typ", lastLoaded: "old", fromDisk: "old"),
-                       "sk-typ")
+        var field = EditableField()
+        field.adopt(fromDisk: "")
+        field.value = "sk-typ"
+        field.adopt(fromDisk: "")
+        XCTAssertEqual(field.value, "sk-typ")
+
+        var edited = EditableField()
+        edited.adopt(fromDisk: "old")
+        edited.value = "sk-typ"
+        edited.adopt(fromDisk: "old")
+        XCTAssertEqual(edited.value, "sk-typ")
+    }
+
+    func testAbandonedEditIsDiscardedOnClose() {
+        var field = EditableField()
+        field.adopt(fromDisk: "on-disk")
+        field.value = "sk-abc"
+        XCTAssertTrue(field.isDirty)
+
+        field.discard()
+        XCTAssertEqual(field.value, "on-disk")
+        XCTAssertFalse(field.isDirty)
+    }
+
+    func testDiscardingAnAbandonedEditLetsLaterDiskChangesThrough() {
+        var field = EditableField()
+        field.adopt(fromDisk: "")
+        field.value = "sk-abc"
+        field.discard()
+        field.adopt(fromDisk: "edited-externally")
+        XCTAssertEqual(field.value, "edited-externally")
+    }
+
+    func testSavedEditSurvivesClose() {
+        var field = EditableField()
+        field.adopt(fromDisk: "on-disk")
+        field.value = "sk-abc"
+        field.commit("sk-abc")
+
+        field.discard()
+        XCTAssertEqual(field.value, "sk-abc")
+        XCTAssertFalse(field.isDirty)
+    }
+
+    func testDiscardOnAnUntouchedFieldChangesNothing() {
+        var field = EditableField()
+        field.adopt(fromDisk: "on-disk")
+        field.discard()
+        XCTAssertEqual(field.value, "on-disk")
     }
 }

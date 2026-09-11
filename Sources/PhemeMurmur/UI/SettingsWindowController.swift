@@ -3,12 +3,14 @@ import SwiftUI
 
 /// Hosts SettingsView in a borderless-looking window: transparent titlebar, full
 /// size content, so the Deep Space panel reads as one surface.
-final class SettingsWindowController {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     static let shared = SettingsWindowController()
 
     let store = SettingsStore()
     private var window: NSWindow?
+
+    private override init() { super.init() }
 
     func show() {
         if let window {
@@ -31,11 +33,19 @@ final class SettingsWindowController {
         created.isMovableByWindowBackground = true
         created.backgroundColor = DeepSpace.nsColor(DeepSpace.spaceVoidBottom)
         created.isReleasedWhenClosed = false
+        created.delegate = self
         created.contentView = hosting
         created.center()
         window = created
 
         created.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
+    }
+
+    /// Closing the window abandons whatever was typed but not submitted; keeping
+    /// it would show a stale value next time and could be written to disk by an
+    /// unrelated save (`saveGeneral` persists the prefix field).
+    func windowWillClose(_ notification: Notification) {
+        store.discardUnsavedEdits()
     }
 }

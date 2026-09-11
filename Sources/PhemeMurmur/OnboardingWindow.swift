@@ -65,6 +65,11 @@ final class OnboardingWindow: NSObject, NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
         if didFinish { OnboardingWindow.markOnboardingComplete() }
 
+        // Anything typed but never submitted (an API key the user did not press
+        // Enter on) is thrown away rather than left in the shared store, where it
+        // would masquerade as the value in effect and block later disk reads.
+        SettingsWindowController.shared.store.discardUnsavedEdits()
+
         // Release the window and its SwiftUI content on both close paths. With
         // isReleasedWhenClosed == false, leaving them referenced kept the whole
         // NSWindow -> NSHostingView -> OnboardingView chain — and its 1 Hz
