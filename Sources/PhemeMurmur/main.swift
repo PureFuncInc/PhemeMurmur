@@ -35,8 +35,19 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.createDefaultConfigIfNeeded()
         installEditMenu()
 
-        onboarding.showIfNeeded { [weak self] in
-            self?.setupApp()
+        // setupApp() must run before the onboarding window shows: its "try it"
+        // page asks the user to record once, which only works if the hotkey
+        // monitor and providers it wires up are already live.
+        wireSettingsStore()
+        setupApp()
+        onboarding.showIfNeeded {}
+    }
+
+    private func wireSettingsStore() {
+        SettingsWindowController.shared.store.onChange = { [weak self] in
+            self?.reloadProvidersFromConfig()
+            self?.applyHotkeyFromConfig()
+            self?.applyGeneralSettingsFromConfig()
         }
     }
 
@@ -305,6 +316,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.state = .idle
                     self.updateStatus("Idle")
                     self.hud.show(.done)
+                    NotificationCenter.default.post(name: .phemeDidTranscribeOnce, object: nil)
                 }
             } catch {
                 await MainActor.run {
@@ -323,11 +335,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     @objc private func openSettings() {
-        SettingsWindowController.shared.store.onChange = { [weak self] in
-            self?.reloadProvidersFromConfig()
-            self?.applyHotkeyFromConfig()
-            self?.applyGeneralSettingsFromConfig()
-        }
         SettingsWindowController.shared.show()
     }
 
