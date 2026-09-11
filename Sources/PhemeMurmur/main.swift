@@ -572,7 +572,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func setWaveformIcon() {
         guard let button = statusItem?.button else { return }
-        button.image = MenuBarIcon.waveformTemplate()
+        button.image = MenuBarIcon.appIcon() ?? MenuBarIcon.waveformTemplate()
         button.title = ""
     }
 
