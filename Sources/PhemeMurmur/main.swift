@@ -346,6 +346,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             ErrorLog.append(context: "recording-start", message: "\(error)")
             updateStatus("Error: \(Self.truncate(error.localizedDescription))")
             showErrorIcon()
+            hud.show(.failed(message: Self.truncate(error.localizedDescription)))
         }
     }
 
