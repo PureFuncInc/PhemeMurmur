@@ -45,4 +45,38 @@ final class AudioRecorderTests: XCTestCase {
 
         wait(for: [writerDone, readerDone], timeout: 10)
     }
+
+    // MARK: - Input format validation
+    //
+    // AVAudioEngine reports 0 Hz / 0 channels when the input device it is bound to
+    // has gone away. Passing that to installTap raises an Objective-C exception
+    // Swift cannot catch, which aborted the app. These pin the guard that turns it
+    // into a thrown Swift error instead.
+
+    func testZeroSampleRateIsNotUsable() {
+        XCTAssertFalse(AudioRecorder.isUsableInputFormat(sampleRate: 0, channelCount: 2))
+    }
+
+    func testZeroChannelsIsNotUsable() {
+        XCTAssertFalse(AudioRecorder.isUsableInputFormat(sampleRate: 48000, channelCount: 0))
+    }
+
+    func testTypicalHardwareFormatsAreUsable() {
+        XCTAssertTrue(AudioRecorder.isUsableInputFormat(sampleRate: 48000, channelCount: 2))
+        XCTAssertTrue(AudioRecorder.isUsableInputFormat(sampleRate: 44100, channelCount: 1))
+        XCTAssertTrue(AudioRecorder.isUsableInputFormat(sampleRate: 16000, channelCount: 1))
+    }
+
+    func testNoInputDeviceErrorExplainsItselfInChinese() {
+        let message = AudioRecorder.RecorderError.noInputDevice.localizedDescription
+        XCTAssertEqual(message, "找不到可用的麥克風")
+    }
+
+    func testStoppingWithoutStartingReportsNoAudio() {
+        let recorder = AudioRecorder()
+        guard case .noAudio = recorder.stopRecording() else {
+            return XCTFail("stopRecording before startRecording should report .noAudio")
+        }
+        XCTAssertFalse(recorder.isRecording)
+    }
 }

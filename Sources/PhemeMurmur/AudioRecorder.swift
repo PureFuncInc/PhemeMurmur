@@ -2,7 +2,12 @@ import AVFoundation
 import Foundation
 
 final class AudioRecorder {
-    private let engine = AVAudioEngine()
+    /// Created fresh for every recording and dropped on stop. A long-lived engine
+    /// stays bound to whichever input device was default when it was first used;
+    /// once that device disappears (Bluetooth headset off, USB mic unplugged,
+    /// virtual device removed) its input node reports a dead format and the next
+    /// installTap raises an uncatchable Objective-C exception.
+    private var engine: AVAudioEngine?
     private var buffers: [AVAudioPCMBuffer] = []
     private let lock = NSLock()
     private(set) var isRecording = false
@@ -61,8 +66,16 @@ final class AudioRecorder {
 
         lastLevelEmit = 0
 
+        let engine = AVAudioEngine()
         let inputNode = engine.inputNode
         let hardwareFormat = inputNode.outputFormat(forBus: 0)
+
+        // installTap raises an Objective-C exception on an invalid format, which
+        // Swift cannot catch — check first and fail as a normal thrown error.
+        guard Self.isUsableInputFormat(sampleRate: hardwareFormat.sampleRate,
+                                       channelCount: hardwareFormat.channelCount) else {
+            throw RecorderError.noInputDevice
+        }
 
         // Target format: 16kHz mono Float32
         guard let recordingFormat = AVAudioFormat(
@@ -116,13 +129,26 @@ final class AudioRecorder {
         }
 
         engine.prepare()
-        try engine.start()
+        do {
+            try engine.start()
+        } catch {
+            inputNode.removeTap(onBus: 0)
+            throw error
+        }
+        self.engine = engine
         isRecording = true
     }
 
+    static func isUsableInputFormat(sampleRate: Double, channelCount: AVAudioChannelCount) -> Bool {
+        sampleRate > 0 && channelCount > 0
+    }
+
     func stopRecording() -> StopResult {
-        engine.inputNode.removeTap(onBus: 0)
-        engine.stop()
+        if let engine {
+            engine.inputNode.removeTap(onBus: 0)
+            engine.stop()
+        }
+        engine = nil
         isRecording = false
 
         lock.lock()
@@ -192,8 +218,17 @@ final class AudioRecorder {
         case tooQuiet(Double)
     }
 
-    enum RecorderError: Error {
+    enum RecorderError: LocalizedError {
         case formatError
         case converterError
+        case noInputDevice
+
+        var errorDescription: String? {
+            switch self {
+            case .formatError: return "無法建立錄音格式"
+            case .converterError: return "無法轉換麥克風音訊格式"
+            case .noInputDevice: return "找不到可用的麥克風"
+            }
+        }
     }
 }
