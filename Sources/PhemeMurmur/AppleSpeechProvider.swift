@@ -2,9 +2,21 @@ import AVFoundation
 import Foundation
 import Speech
 
-/// On-device speech recognition using macOS 26's SpeechAnalyzer + SpeechTranscriber.
+/// On-device speech recognition using macOS 26's SpeechAnalyzer.
 /// No API key, no network, no per-request cost. Language model assets are downloaded
 /// once per locale on first use.
+///
+/// Uses `DictationTranscriber` rather than `SpeechTranscriber`: this app is a
+/// dictation tool — press a key, say a sentence, have it typed into whatever is
+/// in front of you — which is exactly what that module is built for, and it is
+/// the only one of the two with a `shortForm` content hint or any punctuation
+/// control at all.
+///
+/// The live preview in `LiveSpeechTranscriber` deliberately still runs
+/// `SpeechTranscriber`. Its `.fastResults` option has no equivalent here, and
+/// the snappy partial text is the point of the preview. The two passes were
+/// already independent recognitions of the same audio, and the HUD shows this
+/// pass's text once the recording is over, so nothing the user sees disagrees.
 @available(macOS 26.0, *)
 struct AppleSpeechProvider: TranscriptionProvider {
     static let modelIdentifier = "apple-speech-on-device"
@@ -24,14 +36,22 @@ struct AppleSpeechProvider: TranscriptionProvider {
 
         let locale = Self.resolveLocale(from: language)
 
-        let supported = await SpeechTranscriber.supportedLocales
+        let supported = await DictationTranscriber.supportedLocales
         guard supported.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else {
             throw AppleSpeechError.localeUnsupported(locale.identifier)
         }
 
-        let transcriber = SpeechTranscriber(
+        let transcriber = DictationTranscriber(
             locale: locale,
+            // Recordings here are a sentence or two, not a lecture.
+            contentHints: [.shortForm],
+            // Punctuation stays off: the app strips full-width marks anyway, so
+            // asking for them would only be work thrown away. Adding
+            // `.punctuation` here and dropping `TranscriptPunctuation.strip` is
+            // the whole change if that ever becomes wanted.
             transcriptionOptions: [],
+            // This pass reads a finished file, so there is nothing to report
+            // progressively.
             reportingOptions: [],
             attributeOptions: []
         )
