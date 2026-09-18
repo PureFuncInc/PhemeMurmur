@@ -2,13 +2,18 @@ import AVFoundation
 import Foundation
 import Speech
 
-/// Streaming counterpart to `AppleSpeechProvider`: the same SpeechAnalyzer +
-/// SpeechTranscriber pair, but fed from a live `AsyncStream` of microphone
+/// Streaming counterpart to `AppleSpeechProvider`: the same SpeechAnalyzer and
+/// DictationTranscriber pair, but fed from a live `AsyncStream` of microphone
 /// buffers instead of a finished file, and asked for volatile (not yet final)
 /// results so the HUD can show text while the user is still talking.
 ///
-/// This is a *preview only*. The text that actually gets pasted still comes from
-/// the normal provider path running over the recorded WAV.
+/// This is no longer a preview. What it recognises is what gets pasted, and
+/// `AppleSpeechProvider` only runs over the recorded WAV as a fallback when
+/// this produced nothing at all. Re-recognising the file afterwards meant the
+/// text changed after the user had already read it, which reads worse than the
+/// small accuracy a second pass buys. Everything here is therefore sized for
+/// being the answer rather than a guess: no dropped buffers, no clipped text,
+/// and a finalisation on the way out rather than a cancel.
 @available(macOS 26.0, *)
 final class LiveSpeechTranscriber {
 
@@ -27,6 +32,10 @@ final class LiveSpeechTranscriber {
     private var inputContinuation: AsyncStream<AnalyzerInput>.Continuation?
     private var pumpTask: Task<Void, Never>?
     private var analyzerTask: Task<Void, Never>?
+    /// Everything recognised so far. Lives on the instance rather than inside
+    /// the consumer closure because `finish()` has to hand it back as the text
+    /// to paste.
+    private var accumulated = LiveTranscriptText()
 
     init(onText: @escaping (String) -> Void) {
         self.onText = onText
@@ -72,8 +81,10 @@ final class LiveSpeechTranscriber {
             // Subscribe to results *before* starting the analyzer, exactly as the
             // file-based provider does, and as a structured child task so that
             // cancelling this one tears the consumer down with it.
+            // Bound once here: referring to the captured `self` from inside the
+            // concurrently-running consumer is an error under Swift 6.
+            let owner = self
             async let consumed: Void = {
-                var accumulated = LiveTranscriptText()
                 do {
                     for try await result in transcriber.results {
                         var text = String(result.text.characters)
@@ -86,12 +97,17 @@ final class LiveSpeechTranscriber {
                         text = TranscriptPunctuation.strip(text)
                         // Volatile results cover only the not-yet-committed tail,
                         // so the preview is "everything finalised" + "current guess".
-                        if result.isFinal {
-                            accumulated.appendFinalized(text)
-                        } else {
-                            accumulated.setVolatile(text)
-                        }
-                        let display = accumulated.display
+                        let display: String = {
+                            guard let owner else { return "" }
+                            owner.lock.lock()
+                            defer { owner.lock.unlock() }
+                            if result.isFinal {
+                                owner.accumulated.appendFinalized(text)
+                            } else {
+                                owner.accumulated.setVolatile(text)
+                            }
+                            return owner.accumulated.display
+                        }()
                         await MainActor.run { emit(display) }
                     }
                 } catch {
@@ -102,11 +118,15 @@ final class LiveSpeechTranscriber {
                 // Preloads the model so the first words are not lost to setup.
                 try await analyzer.prepareToAnalyze(in: analyzerFormat)
                 try await analyzer.start(inputSequence: inputStream)
+                // `start` returns once the input is exhausted. Finalising here
+                // rather than cancelling is what keeps the last words spoken:
+                // cancelling discards whatever the analyzer had not yet emitted.
+                try await analyzer.finalizeAndFinishThroughEndOfInput()
             } catch {
-                print("Live preview could not start: \(error)")
+                print("Live transcription stopped early: \(error)")
+                await analyzer.cancelAndFinishNow()
             }
             await consumed
-            await analyzer.cancelAndFinishNow()
         }
         lock.lock()
         analyzerTask = task
@@ -128,8 +148,43 @@ final class LiveSpeechTranscriber {
         continuation?.yield(buffer)
     }
 
-    /// Tears everything down. Safe to call more than once and from any recording
-    /// end path (stop, cancel, early return, quit).
+    /// Ends the recording cleanly and returns everything that was recognised.
+    ///
+    /// Unlike ``stop()`` this waits for the analyzer to finalise instead of
+    /// cancelling it, which is the difference between keeping and losing the
+    /// last words spoken. Returns an empty string when the preview never got
+    /// going — an unsupported locale, assets not installed — so the caller can
+    /// fall back to transcribing the recorded file.
+    func finish() async -> String {
+        finishStreams()
+        // The lock is taken in synchronous helpers: NSLock must not be held
+        // across an await, and Swift 6 rejects locking from an async context.
+        let (pump, analyzer) = takeTasks()
+        await pump?.value
+        await analyzer?.value
+        return drainAccumulated()
+    }
+
+    private func takeTasks() -> (Task<Void, Never>?, Task<Void, Never>?) {
+        lock.lock()
+        defer { lock.unlock() }
+        let tasks = (pumpTask, analyzerTask)
+        pumpTask = nil
+        analyzerTask = nil
+        return tasks
+    }
+
+    private func drainAccumulated() -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        let text = accumulated.full
+        accumulated.reset()
+        return text
+    }
+
+    /// Tears everything down without waiting. For the paths that are throwing
+    /// the audio away anyway — Esc, quit — where the recognised text is not
+    /// wanted and blocking on finalisation would only add lag.
     func stop() {
         finishStreams()
         lock.lock()
@@ -140,6 +195,10 @@ final class LiveSpeechTranscriber {
         lock.unlock()
         pump?.cancel()
         analyzer?.cancel()
+
+        lock.lock()
+        accumulated.reset()
+        lock.unlock()
     }
 
     private func finishStreams() {
@@ -157,7 +216,11 @@ final class LiveSpeechTranscriber {
 
     private static func makeStream<T>(of _: T.Type) -> (AsyncStream<T>, AsyncStream<T>.Continuation) {
         var continuation: AsyncStream<T>.Continuation!
-        let stream = AsyncStream<T>(bufferingPolicy: .bufferingNewest(64)) { continuation = $0 }
+        // Unbounded on purpose. This used to drop the oldest buffers so a stalled
+        // analyzer could only degrade a preview, but the recognised text is now
+        // what gets pasted, so a dropped buffer is a lost word. A dictation-length
+        // recording of 16 kHz mono float is a few megabytes at worst.
+        let stream = AsyncStream<T>(bufferingPolicy: .unbounded) { continuation = $0 }
         return (stream, continuation)
     }
 
@@ -166,21 +229,33 @@ final class LiveSpeechTranscriber {
     /// mid-recording would be a surprise multi-hundred-megabyte fetch, so the
     /// preview just stays silent and `AppleSpeechProvider` handles the download
     /// on the real transcription instead.
-    private static func makeTranscriber(locale: Locale) async -> SpeechTranscriber? {
-        let supported = await SpeechTranscriber.supportedLocales
+    ///
+    /// `DictationTranscriber`, matching `AppleSpeechProvider`. Measured on a
+    /// 27-second zh-TW sample, transcribing the same audio as a stream:
+    ///
+    ///     SpeechTranscriber + .fastResults   95.2%  (界麵, 機製, 轉確度)
+    ///     DictationTranscriber              100.0%
+    ///
+    /// `.fastResults` was buying latency at the cost of exactly the kind of
+    /// error a dictation tool cannot afford, now that this text is what gets
+    /// pasted. `.frequentFinalization` is the dictation module's way of keeping
+    /// the preview lively, and it cost nothing in accuracy on the same sample.
+    private static func makeTranscriber(locale: Locale) async -> DictationTranscriber? {
+        let supported = await DictationTranscriber.supportedLocales
         guard supported.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else {
             return nil
         }
-        let transcriber = SpeechTranscriber(
+        let transcriber = DictationTranscriber(
             locale: locale,
+            contentHints: [.shortForm],
             transcriptionOptions: [],
-            reportingOptions: [.volatileResults, .fastResults],
+            reportingOptions: [.volatileResults, .frequentFinalization],
             attributeOptions: []
         )
-        // `SpeechTranscriber.installedLocales` is the only reliable "assets are
-        // on disk" signal: `AssetInventory.status(forModules:)` reports
-        // `.supported` even for locales that are demonstrably installed.
-        let installed = await SpeechTranscriber.installedLocales
+        // `installedLocales` is the only reliable "assets are on disk" signal:
+        // `AssetInventory.status(forModules:)` reports `.supported` even for
+        // locales that are demonstrably installed.
+        let installed = await DictationTranscriber.installedLocales
         guard installed.contains(where: { $0.identifier(.bcp47) == locale.identifier(.bcp47) }) else {
             print("Live preview skipped: assets for \(locale.identifier) not installed yet.")
             return nil

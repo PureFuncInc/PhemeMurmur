@@ -105,3 +105,25 @@ final class LivePreviewPolicyTests: XCTestCase {
         XCTAssertFalse(LivePreviewPolicy.keepsLiveText(.failed(message: "x")))
     }
 }
+
+extension LiveTranscriptTextTests {
+
+    func testFullKeepsTextTheDisplayWouldHaveClipped() {
+        var t = LiveTranscriptText()
+        let long = String(repeating: "字", count: LiveTranscriptText.maxCharacters + 50)
+        t.appendFinalized(long)
+        // The display is sized for a three-line box; the pasted text is not.
+        XCTAssertEqual(t.display.count, LiveTranscriptText.maxCharacters + 1) // + the ellipsis
+        XCTAssertEqual(t.full.count, long.count)
+        XCTAssertFalse(t.full.hasPrefix("…"))
+    }
+
+    func testFullIncludesTheVolatileTail() {
+        var t = LiveTranscriptText()
+        t.appendFinalized("已經確定的")
+        t.setVolatile("還在猜的")
+        // The last words spoken are still volatile when recording stops, so
+        // dropping them would cut the end off every paste.
+        XCTAssertEqual(t.full, "已經確定的還在猜的")
+    }
+}

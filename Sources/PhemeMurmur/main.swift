@@ -237,6 +237,36 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         liveTranscriber = nil
     }
 
+    /// Detaches the audio tap and hands the transcriber back so the caller can
+    /// await its final text. Discarding paths keep using `stopLiveTranscription`,
+    /// which throws the recognised text away instead of waiting for it.
+    private func detachLiveTranscriber() -> AnyObject? {
+        audioRecorder.onBuffer = nil
+        let transcriber = liveTranscriber
+        liveTranscriber = nil
+        return transcriber
+    }
+
+    /// The text the live recogniser heard, or empty when the preview never ran
+    /// — an unsupported locale, assets still downloading, a cloud provider.
+    ///
+    /// Capped by a timeout so a wedged analyzer degrades to transcribing the
+    /// recorded file rather than leaving the user with nothing pasted.
+    private func liveTranscript(from run: AnyObject?) async -> String {
+        guard #available(macOS 26.0, *),
+              let transcriber = run as? LiveSpeechTranscriber else { return "" }
+        return await withTaskGroup(of: String?.self) { group in
+            group.addTask { await transcriber.finish() }
+            group.addTask {
+                try? await Task.sleep(nanoseconds: 5 * 1_000_000_000)
+                return nil
+            }
+            let first = await group.next() ?? nil
+            group.cancelAll()
+            return first ?? ""
+        }
+    }
+
     private func handleToggle() {
         guard !hotkeyBlockedByOnboarding else { return }
         switch state {
@@ -355,9 +385,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hudTickTimer = nil
         recordingStartedAt = nil
         audioRecorder.onLevel = nil
-        // Stop feeding the analyzer here, before every early return below: the
-        // preview's job ends the moment the microphone does.
-        stopLiveTranscription()
+        // Detach the tap here, before every early return below: the analyzer's
+        // input ends the moment the microphone does. The transcriber itself is
+        // kept so the task below can await its final text.
+        let liveRun = detachLiveTranscriber()
 
         let result = audioRecorder.stopRecording()
         let fileURL: URL
@@ -407,7 +438,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             do {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
-                let finalText = try await provider.transcribe(fileURL: fileURL, language: template?.language, prompt: template?.prompt)
+
+                // What the preview showed is what gets pasted. Re-recognising the
+                // recorded file would produce a second, different transcript, and
+                // watching the text change after the fact is worse than the
+                // accuracy that second pass buys.
+                let live = await self.liveTranscript(from: liveRun)
+                let finalText = live.isEmpty
+                    ? try await provider.transcribe(fileURL: fileURL,
+                                                    language: template?.language,
+                                                    prompt: template?.prompt)
+                    : live
+                if !live.isEmpty { print("Using live transcript (\(live.count) chars)") }
                 await MainActor.run {
                     // Esc already reset the UI; never paste after a cancel.
                     guard !Task.isCancelled else { return }

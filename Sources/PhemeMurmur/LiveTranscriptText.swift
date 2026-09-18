@@ -37,6 +37,12 @@ struct LiveTranscriptText: Equatable {
         Self.tail(finalized + volatile, limit: Self.maxCharacters)
     }
 
+    /// Everything recognised, uncut. `display` exists to fit a three-line box;
+    /// this is the text that gets pasted, so it must never be clipped.
+    var full: String {
+        (finalized + volatile).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
     /// Keeps the last `limit` characters, marking the cut with a leading ellipsis.
     /// Leading/trailing whitespace is trimmed so the text area never renders a
     /// blank first line.
