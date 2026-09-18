@@ -202,6 +202,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
 
         startBackgroundUpdateChecks()
+        // Acknowledged as soon as the new copy comes up. Deferred to the next
+        // runloop turn so the modal does not block the rest of setup, and
+        // hopped to the main actor for the isolation check on this @objc path.
+        DispatchQueue.main.async {
+            MainActor.assumeIsolated { UpdatePresenter.reportOutcomeOfPreviousRun() }
+        }
+        NotificationCenter.default.addObserver(
+            forName: .phemeDidStartUpdate, object: nil, queue: .main
+        ) { [weak self] _ in
+            self?.showUpdateInProgress()
+        }
 
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
     }
@@ -731,6 +742,17 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// can run for weeks, so waiting for a relaunch to notice a release would
     /// mean never noticing one.
     private static let updateCheckInterval: TimeInterval = 6 * 60 * 60
+
+    /// The installer downloads and unpacks before it quits us, which is several
+    /// seconds of nothing. The menu bar spins and the row says so, so the user
+    /// can see that the click landed.
+    private func showUpdateInProgress() {
+        MarkIIIMenu.setTitle("更新中…", on: updateMenuItem)
+        updateMenuItem?.isEnabled = false
+        updateCheckTimer?.invalidate()
+        updateCheckTimer = nil
+        apply(iconState: .transcribing)
+    }
 
     @objc private func checkForUpdates() {
         // Menu actions already arrive on the main thread; the hop just satisfies

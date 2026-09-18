@@ -92,14 +92,44 @@ enum UpdatePresenter {
     }
 
     private static func startInstall() {
+        // Noted before spawning: the installer quits this process, so the note
+        // on disk is the only way the next launch can report what happened.
+        UpdateHandoff.markInstallStarted()
+        // The installer downloads before it quits the app, which is several
+        // silent seconds. Tell the menu bar to look busy for them.
+        NotificationCenter.default.post(name: .phemeDidStartUpdate, object: nil)
         do {
             try AppUpdater.run()
         } catch {
+            UpdateHandoff.clear()
             let alert = NSAlert()
             alert.messageText = "更新失敗"
             alert.informativeText = error.localizedDescription
             alert.addButton(withTitle: "好")
             alert.runModal()
         }
+    }
+
+    /// Reports how the previous launch's update went, if there was one. Called
+    /// once at startup; an ordinary launch says nothing.
+    static func reportOutcomeOfPreviousRun() {
+        guard let outcome = UpdateHandoff.consumeOutcome() else { return }
+        let alert = NSAlert()
+        switch outcome {
+        case .updated(let from, let to):
+            alert.messageText = "已更新到 \(to)"
+            alert.informativeText = "PhemeMurmur 已經從 \(from) 更新完成並重新啟動。"
+            alert.addButton(withTitle: "好")
+        case .unchanged(let version):
+            // Spawned but the version never moved, so the install failed after
+            // this app lost control of it. Its log is the only record.
+            alert.messageText = "更新沒有完成"
+            alert.informativeText = """
+            PhemeMurmur 仍然是 \(version)。安裝程式的記錄在 \(AppUpdater.logPath)。
+            """
+            alert.addButton(withTitle: "好")
+        }
+        NSApp.activate(ignoringOtherApps: true)
+        alert.runModal()
     }
 }
