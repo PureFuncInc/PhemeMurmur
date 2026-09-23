@@ -54,5 +54,16 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
     /// it and the edit in flight may be onboarding's.
     func windowWillClose(_ notification: Notification) {
         store.discardUnsavedEditsIfIdle()
+
+        // Release the window and its SwiftUI content instead of keeping them for
+        // reuse. With isReleasedWhenClosed == false a closed window only goes
+        // off screen, and the console's scanline sweep is a repeatForever
+        // animation that keeps redrawing on the main thread for as long as the
+        // view exists. Rebuilding on the next open costs a few milliseconds;
+        // keeping it cost a steady slice of CPU for the rest of the session.
+        let closing = window
+        window = nil
+        // Deferred so the view is not torn down inside its own window's close.
+        DispatchQueue.main.async { closing?.contentView = NSView() }
     }
 }

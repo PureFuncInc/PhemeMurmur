@@ -61,6 +61,7 @@ final class RecordingHUDController {
         if !LivePreviewPolicy.keepsLiveText(phase) { liveText = "" }
 
         let panel = existingPanel()
+        attachContent(to: panel)
         render()
         resizeToFitContent()
         panel.positionAtBottomCorner()
@@ -138,6 +139,13 @@ final class RecordingHUDController {
             // Only tear down if no newer show() took over mid-fade.
             panel.orderOut(nil)
             panel.alphaValue = 1
+            // Ordering the panel out is not enough. The SwiftUI view inside keeps
+            // its repeatForever animations — reactor spin, breathing, ticks —
+            // running on the main thread for as long as it exists, visible or
+            // not. Left attached, a HUD shown once kept the app at roughly 60%
+            // CPU for the rest of the session. Dropping the hosting view ends
+            // them; it is rebuilt on the next show.
+            self.detachContent(from: panel)
             self.levels = Array(repeating: 0, count: 15)
             self.liveText = ""
             self.pastedText = ""
@@ -149,12 +157,24 @@ final class RecordingHUDController {
     private func existingPanel() -> FloatingPanel {
         if let panel { return panel }
         let created = FloatingPanel(contentRect: NSRect(x: 0, y: 0, width: 190, height: 210))
-        let hosting = NSHostingView(rootView: makeView())
-        created.contentView = hosting
         created.alphaValue = 0
         panel = created
-        hostingView = hosting
         return created
+    }
+
+    /// The SwiftUI content only exists while the HUD is on screen — see
+    /// `detachContent`. A no-op when a show arrives mid-fade and the content is
+    /// still attached.
+    private func attachContent(to panel: FloatingPanel) {
+        guard hostingView == nil else { return }
+        let hosting = NSHostingView(rootView: makeView())
+        panel.contentView = hosting
+        hostingView = hosting
+    }
+
+    private func detachContent(from panel: FloatingPanel) {
+        panel.contentView = nil
+        hostingView = nil
     }
 
     private func render() {
