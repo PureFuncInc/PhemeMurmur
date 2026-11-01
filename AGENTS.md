@@ -27,7 +27,7 @@ State machine lives in `AppDelegate`. The hotkey toggle and Esc cancel are dispa
 
 `TranscriptionProvider` protocol (`transcribe(fileURL:language:prompt:)`) with three implementations:
 
-- **OpenAIProvider** — Audio Transcriptions API (default model in `OpenAIProvider.defaultModel`), optional post-processing via chat completions (configurable endpoint for LM Studio etc.)
+- **OpenAIProvider** — Audio Transcriptions API (default model in `OpenAIProvider.defaultModel`), optional post-processing via chat completions when the active prompt template has a `prompt`
 
 This is the minimal version, so we only keep OpenAI provider and remove other providers.
 

@@ -2,27 +2,17 @@ import Foundation
 
 public struct OpenAIProvider: TranscriptionProvider {
     public static let defaultModel = "gpt-transcribe"
-    public static let defaultPostProcessBaseURL = "https://api.openai.com/v1"
-    public static let defaultPostProcessModel = "gpt-5.6-luna"
-    /// Reasoning effort for the default post-process model. Its own default is
+    private static let postProcessModel = "gpt-5.6-luna"
+    /// Reasoning effort for the post-process model. Its own default is
     /// "medium", which is slow for a one-sentence rewrite.
-    public static let defaultPostProcessReasoningEffort = "low"
+    private static let postProcessReasoningEffort = "low"
 
     public let apiKey: String
     public let modelName: String
-    public let postProcessBaseURL: String
-    public let postProcessModel: String
 
-    public init(
-        apiKey: String,
-        model: String = Self.defaultModel,
-        postProcessBaseURL: String = Self.defaultPostProcessBaseURL,
-        postProcessModel: String = Self.defaultPostProcessModel
-    ) {
+    public init(apiKey: String, model: String = Self.defaultModel) {
         self.apiKey = apiKey
         self.modelName = model
-        self.postProcessBaseURL = postProcessBaseURL
-        self.postProcessModel = postProcessModel
     }
 
     public var requiresAPIKey: Bool { true }
@@ -114,28 +104,20 @@ public struct OpenAIProvider: TranscriptionProvider {
     }
 
     private func postProcess(text: String, instruction: String) async throws -> String {
-        let trimmedBase = postProcessBaseURL.hasSuffix("/")
-            ? String(postProcessBaseURL.dropLast())
-            : postProcessBaseURL
-        let url = URL(string: "\(trimmedBase)/chat/completions")!
+        let url = URL(string: "https://api.openai.com/v1/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        var body: [String: Any] = [
-            "model": postProcessModel,
+        let body: [String: Any] = [
+            "model": Self.postProcessModel,
+            "reasoning_effort": Self.postProcessReasoningEffort,
             "messages": [
                 ["role": "system", "content": instruction],
                 ["role": "user", "content": text],
             ],
         ]
-        // Only the default model is known to accept reasoning_effort. A model
-        // set via "post-process" (gpt-4o-mini, a local LM Studio model, …) may
-        // reject the request outright if it is present.
-        if postProcessModel == Self.defaultPostProcessModel {
-            body["reasoning_effort"] = Self.defaultPostProcessReasoningEffort
-        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data: Data

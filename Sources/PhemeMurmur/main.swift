@@ -549,15 +549,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         switch entry.type {
         case .openai:
             let apiKey = Keychain.apiKey(for: name) ?? ""
-            let postProcessBaseURL = entry.postProcess?.baseURL ?? OpenAIProvider.defaultPostProcessBaseURL
-            let postProcessModel = entry.postProcess?.model ?? OpenAIProvider.defaultPostProcessModel
             return FallbackProvider(chain: chain) { model in
-                OpenAIProvider(
-                    apiKey: apiKey,
-                    model: model,
-                    postProcessBaseURL: postProcessBaseURL,
-                    postProcessModel: postProcessModel
-                )
+                OpenAIProvider(apiKey: apiKey, model: model)
             }
         case .apple:
             return FallbackProvider(chain: chain) { model in

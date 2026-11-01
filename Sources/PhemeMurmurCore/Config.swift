@@ -24,26 +24,9 @@ extension ProviderType {
     }
 }
 
-public struct PostProcessConfig: Decodable {
-    public let baseURL: String?
-    public let model: String?
-
-    enum CodingKeys: String, CodingKey {
-        case baseURL = "base-url"
-        case model
-    }
-}
-
 public struct ProviderEntry: Decodable {
     public let type: ProviderType
-    public let postProcess: PostProcessConfig?
     public let active: Bool?
-
-    enum CodingKeys: String, CodingKey {
-        case type
-        case postProcess = "post-process"
-        case active
-    }
 }
 
 public struct ConfigFile: Decodable {
