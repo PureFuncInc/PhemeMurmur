@@ -4,13 +4,7 @@ import Foundation
 import PhemeMurmurCore
 import os
 
-enum HotkeyKey: String, CaseIterable {
-    case fn           = "fn"
-    case rightCommand = "right-command"
-    case rightOption  = "right-option"
-    case rightControl = "right-control"
-    case rightShift   = "right-shift"
-
+extension HotkeyKey {
     var keyCode: Int64 {
         switch self {
         case .fn:           return 0x3F
@@ -24,7 +18,7 @@ enum HotkeyKey: String, CaseIterable {
     /// Short name used in the parent menu item title (e.g. "Hotkey: Right Shift")
     var shortName: String {
         switch self {
-        case .fn:           return "Fn"
+        case .fn:           return "Fn / Globe"
         case .rightCommand: return "Right Command"
         case .rightOption:  return "Right Option"
         case .rightControl: return "Right Control"
@@ -35,7 +29,7 @@ enum HotkeyKey: String, CaseIterable {
     /// Full display name with macOS symbol shown in submenu items
     var displayName: String {
         switch self {
-        case .fn:           return "Fn"
+        case .fn:           return "Fn / Globe (🌐)"
         case .rightCommand: return "Right Command (⌘)"
         case .rightOption:  return "Right Option (⌥)"
         case .rightControl: return "Right Control (^)"

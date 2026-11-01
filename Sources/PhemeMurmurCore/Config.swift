@@ -4,11 +4,42 @@ public struct PromptTemplate: Decodable, Sendable {
     public let language: String?
     public let prompt: String?
     public let active: Bool?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case language
+        case prompt
+        case active
+    }
+
+    public init(from decoder: Decoder) throws {
+        try decoder.rejectUnknownKeys(CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        language = try container.decodeIfPresent(String.self, forKey: .language)
+        prompt = try container.decodeIfPresent(String.self, forKey: .prompt)
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+    }
 }
 
-public enum ProviderType: String, Decodable {
+public enum ProviderType: String, CaseIterable, Decodable {
     case openai
     case apple
+
+    public init(from decoder: Decoder) throws {
+        self = try decoder.decodeCase(of: Self.self)
+    }
+}
+
+/// Modifier keys that can toggle recording, named as they are written in config.json.
+public enum HotkeyKey: String, CaseIterable, Decodable, Sendable {
+    case fn           = "fn"
+    case rightCommand = "right-command"
+    case rightOption  = "right-option"
+    case rightControl = "right-control"
+    case rightShift   = "right-shift"
+
+    public init(from decoder: Decoder) throws {
+        self = try decoder.decodeCase(of: Self.self)
+    }
 }
 
 extension ProviderType {
@@ -27,17 +58,29 @@ extension ProviderType {
 public struct ProviderEntry: Decodable {
     public let type: ProviderType
     public let active: Bool?
+
+    enum CodingKeys: String, CodingKey, CaseIterable {
+        case type
+        case active
+    }
+
+    public init(from decoder: Decoder) throws {
+        try decoder.rejectUnknownKeys(CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        type = try container.decode(ProviderType.self, forKey: .type)
+        active = try container.decodeIfPresent(Bool.self, forKey: .active)
+    }
 }
 
 public struct ConfigFile: Decodable {
     public let providers: [String: ProviderEntry]?
     public let prefix: String?
     public let promptTemplates: [String: PromptTemplate]?
-    public let hotkey: String?
+    public let hotkey: HotkeyKey?
     public let silenceThreshold: Double?
     public let voiceCommands: Bool?
 
-    enum CodingKeys: String, CodingKey {
+    enum CodingKeys: String, CodingKey, CaseIterable {
         case providers
         case prefix
         case promptTemplates = "prompt-templates"
@@ -46,8 +89,36 @@ public struct ConfigFile: Decodable {
         case voiceCommands = "voice-commands"
     }
 
-    public var resolvedHotkey: String {
-        hotkey ?? "right-shift"
+    public init(from decoder: Decoder) throws {
+        try decoder.rejectUnknownKeys(CodingKeys.self)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providers = try container.decodeIfPresent([String: ProviderEntry].self, forKey: .providers)
+        prefix = try container.decodeIfPresent(String.self, forKey: .prefix)
+        promptTemplates = try container.decodeIfPresent([String: PromptTemplate].self, forKey: .promptTemplates)
+        hotkey = try container.decodeIfPresent(HotkeyKey.self, forKey: .hotkey)
+        silenceThreshold = try container.decodeIfPresent(Double.self, forKey: .silenceThreshold)
+        voiceCommands = try container.decodeIfPresent(Bool.self, forKey: .voiceCommands)
+
+        if let silenceThreshold, !(0...1).contains(silenceThreshold) {
+            throw DecodingError.dataCorruptedError(
+                forKey: .silenceThreshold, in: container,
+                debugDescription: "must be between 0 and 1, found \(silenceThreshold)"
+            )
+        }
+        let activeEntries: [(CodingKeys, [String])] = [
+            (.providers, (providers ?? [:]).filter { $0.value.active == true }.keys.sorted()),
+            (.promptTemplates, (promptTemplates ?? [:]).filter { $0.value.active == true }.keys.sorted()),
+        ]
+        for (section, names) in activeEntries where names.count > 1 {
+            throw DecodingError.dataCorruptedError(
+                forKey: section, in: container,
+                debugDescription: "only one entry can have \"active\": true, found \(names.joined(separator: ", "))"
+            )
+        }
+    }
+
+    public var resolvedHotkey: HotkeyKey {
+        hotkey ?? .rightShift
     }
 
     /// Builds the full provider map from the `providers` dict.
@@ -71,6 +142,86 @@ public struct ConfigFile: Decodable {
     /// Defaults to false: feature must be explicitly opted into.
     public var resolvedVoiceCommands: Bool {
         voiceCommands ?? false
+    }
+
+    /// Defaults to 0, which turns the silence check off.
+    public var resolvedSilenceThreshold: Double {
+        silenceThreshold ?? 0
+    }
+}
+
+/// Why config.json can't be used, worded for someone fixing it by hand: it names the key path
+/// (e.g. `providers.OpenAI.type`) or, for malformed JSON, the line and column.
+public struct ConfigError: LocalizedError {
+    public let message: String
+
+    public var errorDescription: String? { message }
+
+    public init(message: String) {
+        self.message = message
+    }
+
+    init(_ error: DecodingError) {
+        func at(_ path: [CodingKey]) -> String {
+            path.isEmpty ? "config.json" : path.map(\.stringValue).joined(separator: ".")
+        }
+        switch error {
+        case .dataCorrupted(let context) where context.codingPath.isEmpty:
+            // Foundation reports where the syntax error is in the underlying error.
+            let detail = (context.underlyingError as NSError?)?.userInfo[NSDebugDescriptionErrorKey] as? String
+            message = "Invalid JSON: \(detail ?? context.debugDescription)"
+        case .dataCorrupted(let context):
+            message = "\(at(context.codingPath)): \(context.debugDescription)"
+        case .typeMismatch(let type, let context):
+            message = "\(at(context.codingPath)): expected \(Self.jsonType(type))"
+        case .valueNotFound(let type, let context):
+            message = "\(at(context.codingPath)): expected \(Self.jsonType(type)), found null"
+        case .keyNotFound(let key, let context):
+            message = "\(at(context.codingPath)): missing \"\(key.stringValue)\""
+        @unknown default:
+            message = error.localizedDescription
+        }
+    }
+
+    private static func jsonType(_ type: Any.Type) -> String {
+        switch type {
+        case is Bool.Type:   return "true or false"
+        case is String.Type: return "a string"
+        case is Double.Type: return "a number"
+        default:             return "an object"
+        }
+    }
+}
+
+/// Matches any key, so a decoder can list every key present in a JSON object.
+private struct AnyCodingKey: CodingKey {
+    let stringValue: String
+    var intValue: Int? { nil }
+
+    init(stringValue: String) { self.stringValue = stringValue }
+    init?(intValue: Int) { nil }
+}
+
+extension Decoder {
+    /// Throws on a key `Keys` doesn't list, so a typo like `"actve"` is reported instead of silently ignored.
+    func rejectUnknownKeys<Keys: CodingKey & CaseIterable>(_: Keys.Type) throws {
+        let container = try container(keyedBy: AnyCodingKey.self)
+        let known = Set(Keys.allCases.map(\.stringValue))
+        let unknown = container.allKeys.filter { !known.contains($0.stringValue) }
+        if let first = unknown.min(by: { $0.stringValue < $1.stringValue }) {
+            throw DecodingError.dataCorruptedError(forKey: first, in: container, debugDescription: "unknown key")
+        }
+    }
+
+    /// Decodes a string that must be one of `T`'s raw values, listing the allowed ones when it isn't.
+    func decodeCase<T: RawRepresentable & CaseIterable>(of _: T.Type) throws -> T where T.RawValue == String {
+        let container = try singleValueContainer()
+        let raw = try container.decode(String.self)
+        guard let value = T(rawValue: raw) else {
+            let allowed = T.allCases.map { "\"\($0.rawValue)\"" }.joined(separator: ", ")
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "\"\(raw)\" is not one of \(allowed)")
+        }
+        return value
     }
 }
 
@@ -207,9 +358,15 @@ public enum Config {
         return String(decoding: bytes, as: UTF8.self)
     }
 
-    public static func loadConfig() -> ConfigFile? {
-        guard let data = FileManager.default.contents(atPath: configPath) else { return nil }
-        return try? JSONDecoder().decode(ConfigFile.self, from: data)
+    /// Decodes the contents of config.json. Anything a hand edit can get wrong (malformed JSON,
+    /// unknown keys, wrong value types, unsupported values) throws a `ConfigError` here, so a
+    /// config that parses is safe to apply.
+    public static func parse(_ data: Data) throws -> ConfigFile {
+        do {
+            return try JSONDecoder().decode(ConfigFile.self, from: data)
+        } catch let error as DecodingError {
+            throw ConfigError(error)
+        }
     }
 }
 

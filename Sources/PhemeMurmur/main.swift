@@ -24,6 +24,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var voiceCommandsEnabled: Bool = false
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
+    /// Contents of the config.json last applied, so an unchanged file isn't applied again.
+    private var appliedConfigData: Data?
     private var accessibilityPollTimer: Timer?
 
     private var activeProvider: TranscriptionProvider? {
@@ -38,7 +40,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var state: State = .idle
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        Config.createDefaultConfigIfNeeded()
         installEditMenu()
 
         setupApp()
@@ -131,47 +132,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
         setLaunchAtLogin(state: launchAtLogin.state)
 
-        // Load config
-        if let config = Config.loadConfig() {
-            let entries = config.resolvedProviders
-            for (name, entry) in entries {
-                providers[name] = Self.makeProvider(named: name, for: entry)
-            }
-            Self.injectBuiltInProvidersIfNeeded(into: &providers)
-            if let active = config.resolvedActiveProvider, providers[active] != nil {
-                activeProviderName = active
-            } else if !providers.isEmpty {
-                activeProviderName = providers.keys.sorted().first ?? ""
-            }
-            if providers.isEmpty {
-                print("Error: No API key configured in \(Config.configPath)")
-                ErrorLog.append(context: "config-missing-api-key", message: "No API key configured in \(Config.configPath)")
-                updateStatus("Error: \(Self.truncate("No API key"))")
-                showErrorIcon(persistent: true)
-            } else {
-                print("Providers: \(providers.keys.sorted().joined(separator: ", "))")
-                print("Active provider: \(activeProviderName)")
-            }
-            prefix = config.prefix
-            voiceCommandsEnabled = config.resolvedVoiceCommands
-            if let threshold = config.silenceThreshold {
-                Config.silenceThreshold = threshold
-            }
-            currentHotkey = HotkeyKey(rawValue: config.resolvedHotkey) ?? .rightShift
-            hotkeyManager.key = currentHotkey
-            promptTemplates = config.promptTemplates ?? [:]
-            if let saved = config.resolvedActivePromptTemplate {
-                activeTemplateName = saved
-            }
-        } else {
-            print("Error: Failed to parse \(Config.configPath)")
-            ErrorLog.append(context: "config-parse", message: "Failed to parse \(Config.configPath)")
-            updateStatus("Error: \(Self.truncate("Invalid config syntax"))")
-            showErrorIcon(persistent: true)
+        if !reloadConfig() {
+            // Fill the submenus from defaults so they aren't empty while config.json is broken.
+            rebuildSubmenus()
         }
-        rebuildProviderSubmenu()
-        rebuildPromptSubmenu()
-        rebuildHotkeySubmenu()
 
         // Setup hotkey
         hotkeyManager.onToggle = { [weak self] in
@@ -195,9 +159,89 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         print("PhemeMurmur ready. Press Right Shift to start/stop recording. Press Esc to cancel.")
     }
 
+    /// Re-reads config.json and applies it if it changed since the last successful load.
+    /// When the file can't be used, reports why and keeps the settings already applied.
+    @discardableResult
+    private func reloadConfig() -> Bool {
+        Config.createDefaultConfigIfNeeded()
+        guard let data = FileManager.default.contents(atPath: Config.configPath) else {
+            reportConfigError("Cannot read \(Config.configPath)")
+            return false
+        }
+        guard data != appliedConfigData else { return true }
+        do {
+            try apply(Config.parse(data))
+        } catch {
+            reportConfigError(error.localizedDescription)
+            return false
+        }
+        appliedConfigData = data
+        if state == .idle {
+            updateStatus("Idle")
+        }
+        return true
+    }
+
+    /// Applies a parsed config. Throws, changing nothing, if the active prompt template has a
+    /// `prompt` the active provider can't run: the menu greys that pairing out, but a hand edit can still make it.
+    private func apply(_ config: ConfigFile) throws {
+        var newProviders: [String: TranscriptionProvider] = [:]
+        for (name, entry) in config.resolvedProviders {
+            newProviders[name] = Self.makeProvider(named: name, for: entry)
+        }
+        Self.injectBuiltInProvidersIfNeeded(into: &newProviders)
+        let providerName: String
+        if let active = config.resolvedActiveProvider, newProviders[active] != nil {
+            providerName = active
+        } else {
+            providerName = newProviders.keys.sorted().first ?? ""
+        }
+        let templateName = config.resolvedActivePromptTemplate ?? Config.defaultPromptTemplateName
+        if config.promptTemplates?[templateName]?.prompt != nil, newProviders[providerName]?.supportsPrompt == false {
+            throw ConfigError(message: "prompt-templates.\(templateName): has a \"prompt\", which the active provider \(providerName) can't run (only \"openai\" providers can). Mark an \"openai\" provider or a template without a \"prompt\" as \"active\".")
+        }
+
+        providers = newProviders
+        activeProviderName = providerName
+        print("Providers: \(providers.keys.sorted().joined(separator: ", "))")
+        print("Active provider: \(activeProviderName)")
+        prefix = config.prefix
+        voiceCommandsEnabled = config.resolvedVoiceCommands
+        Config.silenceThreshold = config.resolvedSilenceThreshold
+        currentHotkey = config.resolvedHotkey
+        hotkeyManager.key = currentHotkey
+        promptTemplates = config.promptTemplates ?? [:]
+        activeTemplateName = templateName
+        rebuildSubmenus()
+    }
+
+    /// Shows why config.json can't be used. The status line only fits the start of the message,
+    /// so the full text goes in an alert.
+    private func reportConfigError(_ message: String) {
+        print("Error: Invalid config: \(message)")
+        ErrorLog.append(context: "config-invalid", message: message)
+        updateStatus("Error: \(Self.truncate("Invalid config: \(message)"))")
+        showErrorIcon(persistent: true)
+
+        // A hotkey press while the alert is open would otherwise stack another one on top.
+        guard NSApp.modalWindow == nil else { return }
+        let alert = NSAlert()
+        alert.messageText = "config.json can't be used"
+        alert.informativeText = "\(message)\n\nFix \(Config.configPath). PhemeMurmur reads it again the next time you press the hotkey."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Show in Finder")
+        alert.addButton(withTitle: "OK")
+        NSApp.activate(ignoringOtherApps: true)
+        if alert.runModal() == .alertFirstButtonReturn {
+            NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: Config.configPath)])
+        }
+    }
+
     private func handleToggle() {
         switch state {
         case .idle:
+            // Pick up edits to config.json, and don't record against one that's broken.
+            guard reloadConfig() else { return }
             startRecording()
         case .recording:
             stopRecordingAndTranscribe()
@@ -341,6 +385,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         }
     }
 
+    private func rebuildSubmenus() {
+        rebuildProviderSubmenu()
+        rebuildPromptSubmenu()
+        rebuildHotkeySubmenu()
+    }
+
     private func rebuildProviderSubmenu() {
         providerSubmenu.removeAllItems()
         let templateHasPrompt = promptTemplates[activeTemplateName]?.prompt != nil
@@ -454,23 +504,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             return false
         }
 
-        reloadProvidersFromConfig()
-        rebuildProviderSubmenu()
-        rebuildPromptSubmenu()
+        // Providers read their key when they're created, so rebuild them even though config.json is unchanged.
+        appliedConfigData = nil
+        reloadConfig()
         print("Updated API key for \(name)")
         return true
-    }
-
-    private func reloadProvidersFromConfig() {
-        guard let config = Config.loadConfig() else { return }
-        providers.removeAll()
-        for (n, entry) in config.resolvedProviders {
-            providers[n] = Self.makeProvider(named: n, for: entry)
-        }
-        Self.injectBuiltInProvidersIfNeeded(into: &providers)
-        if providers[activeProviderName] == nil {
-            activeProviderName = providers.keys.sorted().first ?? ""
-        }
     }
 
     /// Auto-registers built-in providers that don't require any config (currently
