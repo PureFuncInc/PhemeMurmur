@@ -33,7 +33,7 @@ This is the minimal version, so we only keep OpenAI provider and remove other pr
 
 ### Key components
 
-- **Config** — loads plain JSON from `~/.config/pheme-murmur/config.json` (no comments allowed). Also handles saving individual fields (api-key, hotkey, active-provider) via regex replacement to preserve the file's formatting and key order.
+- **Config** — loads plain JSON from `~/.config/pheme-murmur/config.json` (no comments allowed). Also handles saving individual fields (api-key, hotkey, and the `enabled` flag on provider / prompt-template entries) by editing the text in place to preserve the file's formatting and key order.
 - **AudioRecorder** — `AVAudioEngine` tap converting hardware audio to 16kHz mono Float32, writes WAV via `AVAudioFile`. Validates minimum duration and RMS silence threshold.
 - **HotkeyManager** — `CGEvent.tapCreate` listening for `flagsChanged` + `keyDown` (Esc). Configurable hotkey (`HotkeyKey` enum). Requires Accessibility permission.
 - **PasteService** — clipboard + simulated Cmd+V via `CGEvent`.

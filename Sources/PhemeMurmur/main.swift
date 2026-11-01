@@ -173,7 +173,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             currentHotkey = HotkeyKey(rawValue: config.resolvedHotkey) ?? .rightShift
             hotkeyManager.key = currentHotkey
             promptTemplates = config.promptTemplates ?? [:]
-            if let saved = config.activePromptTemplate, promptTemplates[saved] != nil {
+            if let saved = config.resolvedActivePromptTemplate {
                 activeTemplateName = saved
             }
         } else {
