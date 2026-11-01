@@ -39,6 +39,10 @@ public final class FallbackProvider: TranscriptionProvider, @unchecked Sendable 
         factory(chain[0]).isKeyConfigured
     }
 
+    public var supportsPrompt: Bool {
+        factory(chain[0]).supportsPrompt
+    }
+
     public func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
         let available = availableModels()
         if available.isEmpty {

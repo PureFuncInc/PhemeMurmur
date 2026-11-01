@@ -27,7 +27,7 @@ make clean && make install
 1. Grant **Accessibility** access when prompted (System Settings > Privacy & Security > Accessibility). The hotkey starts working as soon as access is granted, no restart needed.
 2. Press **Right Shift** to start recording and grant **Microphone** access when prompted.
 3. The default provider is **Apple** (on-device, no API key). The first transcription for a language takes longer while macOS downloads its speech model.
-4. To use **OpenAI**, pick it from the **Provider** menu and enter your API key when asked (or use **Set API Key for OpenAI…**). The key is saved to your login Keychain (see [API keys](#api-keys)). Prompt templates with a `prompt` (such as `zh_TW-en_US`) only work with OpenAI.
+4. To use **OpenAI**, pick it from the **Provider** menu and enter your API key when asked (or use **Set API Key for OpenAI…**). The key is saved to your login Keychain (see [API keys](#api-keys)). Prompt templates with a `prompt` (such as `zh_TW-en_US`) only work with OpenAI: the **Prompt** menu labels them *(OpenAI only)* and greys them out while Apple is selected, and Apple is greyed out while one of them is active.
 
 ## API keys
 
@@ -62,3 +62,8 @@ It is plain JSON, so comments are not allowed. Options:
 | `prefix` | Text prepended to every transcription result. |
 | `silence-threshold` | RMS energy threshold (0.0–1.0); quieter recordings are discarded. `0` disables it (e.g. `0.003` to enable). |
 | `voice-commands` | `true` turns on local formatting commands (換行 / 空行 / 分隔線 / 第一點…第十點). Skipped when the active template has a `prompt`. |
+
+## TODO
+
+- [ ] Reorganize the default config (`Config.defaultConfigContent`) and add the `zh_TW-Rewrite` prompt template to it.
+- [ ] Voice commands are skipped whenever the active template has a `prompt`, so they do nothing with `zh_TW-Rewrite`. Decide whether they should run alongside post-processing.

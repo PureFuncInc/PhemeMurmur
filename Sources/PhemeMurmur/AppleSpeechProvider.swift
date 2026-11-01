@@ -17,6 +17,7 @@ struct AppleSpeechProvider: TranscriptionProvider {
 
     var requiresAPIKey: Bool { false }
     var isKeyConfigured: Bool { true }
+    var supportsPrompt: Bool { false }
 
     func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
         if prompt != nil {

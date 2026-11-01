@@ -82,11 +82,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         statusMenu.addItem(NSMenuItem.separator())
 
         providerSubmenu = NSMenu()
+        providerSubmenu.autoenablesItems = false
         providerMenuItem = Self.makeMenuItem(title: "Provider", systemImage: "cloud")
         statusMenu.addItem(providerMenuItem)
         statusMenu.setSubmenu(providerSubmenu, for: providerMenuItem)
 
         promptSubmenu = NSMenu()
+        promptSubmenu.autoenablesItems = false
         promptMenuItem = Self.makeMenuItem(title: "Prompt", systemImage: "text.bubble")
         statusMenu.addItem(promptMenuItem)
         statusMenu.setSubmenu(promptSubmenu, for: promptMenuItem)
@@ -341,10 +343,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildProviderSubmenu() {
         providerSubmenu.removeAllItems()
+        let templateHasPrompt = promptTemplates[activeTemplateName]?.prompt != nil
         for name in providers.keys.sorted() {
             let item = NSMenuItem(title: name, action: #selector(selectProvider(_:)), keyEquivalent: "")
             item.representedObject = name
             item.image = (name == activeProviderName) ? Self.enabledImage() : nil
+            if templateHasPrompt, providers[name]?.supportsPrompt == false {
+                item.isEnabled = false
+                item.toolTip = "\(activeTemplateName) is OpenAI only"
+            }
             providerSubmenu.addItem(item)
         }
         if activeProvider?.requiresAPIKey == true {
@@ -390,6 +397,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         activeProviderName = name
         Config.saveActiveProvider(name)
         rebuildProviderSubmenu()
+        rebuildPromptSubmenu()
         if state == .idle {
             updateStatus("Idle")
         }
@@ -448,6 +456,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         reloadProvidersFromConfig()
         rebuildProviderSubmenu()
+        rebuildPromptSubmenu()
         print("Updated API key for \(name)")
         return true
     }
@@ -477,10 +486,15 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildPromptSubmenu() {
         promptSubmenu.removeAllItems()
-        for name in promptTemplates.keys.sorted() {
-            let item = NSMenuItem(title: name, action: #selector(selectPromptTemplate(_:)), keyEquivalent: "")
+        let providerSupportsPrompt = activeProvider?.supportsPrompt ?? true
+        for (name, template) in promptTemplates.sorted(by: { $0.key < $1.key }) {
+            // Post-processing prompts run through OpenAI chat completions; Apple can't apply them.
+            let hasPrompt = template.prompt != nil
+            let title = hasPrompt ? "\(name) (OpenAI only)" : name
+            let item = NSMenuItem(title: title, action: #selector(selectPromptTemplate(_:)), keyEquivalent: "")
             item.representedObject = name
             item.image = (name == activeTemplateName) ? Self.enabledImage() : nil
+            item.isEnabled = !hasPrompt || providerSupportsPrompt
             promptSubmenu.addItem(item)
         }
         promptMenuItem?.title = "Prompt: \(activeTemplateName)"
@@ -491,6 +505,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         activeTemplateName = name
         Config.saveActivePromptTemplate(name)
         rebuildPromptSubmenu()
+        rebuildProviderSubmenu()
         print("Switched prompt template to: \(name)")
     }
 

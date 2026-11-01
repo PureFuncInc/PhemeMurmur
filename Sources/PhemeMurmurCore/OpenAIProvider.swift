@@ -31,6 +31,8 @@ public struct OpenAIProvider: TranscriptionProvider {
         !apiKey.isEmpty
     }
 
+    public var supportsPrompt: Bool { true }
+
     func makeTranscriptionRequest(fileURL: URL, language: String?) throws -> URLRequest {
         let model = self.modelName
         let boundary = UUID().uuidString
