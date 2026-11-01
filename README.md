@@ -5,17 +5,16 @@ macOS menu bar app — press Right Shift to record, transcribe speech via OpenAI
 ## Features
 
 - **Menu bar only** — no Dock icon, stays out of your way
-- **Right Shift toggle** — press to start/stop recording (Esc to cancel)
-- **Multi-provider** — switch between OpenAI and Apple on-device speech at runtime
-- **Prompt templates** — configurable post-processing (translation, formatting, etc.)
-- **Auto-paste** — transcribed text is written to clipboard and pasted via Cmd+V
 - **Zero dependencies** — pure Swift, Apple frameworks only
+- **Auto-paste** — transcribed text is written to clipboard and pasted via Cmd+V
+- **Right Shift toggle** — press to start/stop recording (Esc to cancel)
+- **Prompt templates** — configurable post-processing (translation, formatting, etc.)
 
-## Requirements
+## Build Requirements
 
 - macOS 26+
 - Xcode Command Line Tools (`xcode-select --install`) only if building from source
-- API key for [OpenAI](https://platform.openai.com/api-keys) — optional, only needed for the OpenAI provider
+- (Optional) API key for [OpenAI](https://platform.openai.com/api-keys) — only needed for the OpenAI provider
 
 ## Install
 
