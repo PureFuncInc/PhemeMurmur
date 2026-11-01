@@ -148,7 +148,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let config = Config.loadConfig() {
             let entries = config.resolvedProviders
             for (name, entry) in entries {
-                providers[name] = Self.makeProvider(for: entry)
+                providers[name] = Self.makeProvider(named: name, for: entry)
             }
             Self.injectBuiltInProvidersIfNeeded(into: &providers)
             if let active = config.resolvedActiveProvider, providers[active] != nil {
@@ -417,12 +417,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         _ = runAPIKeyPrompt(
             for: name,
             messageText: "Set API Key for \(name)",
-            informativeText: "The key will be saved to config.json.",
+            informativeText: "The key will be saved to the Keychain.",
             style: .informational
         )
     }
 
-    /// Shows an API-key input alert for `name`, writes the key to config.json on Save, and reloads
+    /// Shows an API-key input alert for `name`, writes the key to the Keychain on Save, and reloads
     /// the provider instance so the new key takes effect immediately. Returns true iff a key was saved.
     @discardableResult
     private func runAPIKeyPrompt(
@@ -450,10 +450,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         let newKey = textField.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !newKey.isEmpty else { return false }
 
-        if !Config.saveAPIKey(providerName: name, apiKey: newKey) {
+        let status = Keychain.saveAPIKey(newKey, for: name)
+        if status != errSecSuccess {
+            ErrorLog.append(context: "keychain-save", message: "\(name): \(Keychain.message(for: status))")
             let err = NSAlert()
             err.messageText = "Failed to save API key"
-            err.informativeText = "Could not locate provider \"\(name)\" in config.json. Please edit the file manually."
+            err.informativeText = "Could not save the key to the Keychain: \(Keychain.message(for: status))"
             err.alertStyle = .warning
             err.runModal()
             return false
@@ -469,7 +471,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let config = Config.loadConfig() else { return }
         providers.removeAll()
         for (n, entry) in config.resolvedProviders {
-            providers[n] = Self.makeProvider(for: entry)
+            providers[n] = Self.makeProvider(named: n, for: entry)
         }
         Self.injectBuiltInProvidersIfNeeded(into: &providers)
         if providers[activeProviderName] == nil {
@@ -542,11 +544,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
-    private static func makeProvider(for entry: ProviderEntry) -> TranscriptionProvider {
+    private static func makeProvider(named name: String, for entry: ProviderEntry) -> TranscriptionProvider {
         let chain = entry.type.fallbackChain
-        let apiKey = entry.apiKey ?? ""
         switch entry.type {
         case .openai:
+            let apiKey = Keychain.apiKey(for: name) ?? ""
             let postProcessBaseURL = entry.postProcess?.baseURL ?? OpenAIProvider.defaultPostProcessBaseURL
             let postProcessModel = entry.postProcess?.model ?? OpenAIProvider.defaultPostProcessModel
             return FallbackProvider(chain: chain) { model in

@@ -36,13 +36,11 @@ public struct PostProcessConfig: Decodable {
 
 public struct ProviderEntry: Decodable {
     public let type: ProviderType
-    public let apiKey: String?
     public let postProcess: PostProcessConfig?
     public let enabled: Bool?
 
     enum CodingKeys: String, CodingKey {
         case type
-        case apiKey = "api-key"
         case postProcess = "post-process"
         case enabled
     }
@@ -111,7 +109,7 @@ public enum Config {
 {
     "providers": {
         "Apple": { "enabled": true, "type": "apple" },
-        "OpenAI": { "type": "openai", "api-key": "sk-proj-xxx" }
+        "OpenAI": { "type": "openai" }
     },
     "hotkey": "right-shift",
     "prefix": "",
@@ -132,47 +130,7 @@ public enum Config {
         try? fm.createDirectory(atPath: dir, withIntermediateDirectories: true)
         try? defaultConfigContent.write(toFile: configPath, atomically: true, encoding: .utf8)
         print("Created default config at \(configPath)")
-        print("Edit it and add your provider API keys to get started.")
-    }
-
-    /// Writes (or updates) the api-key for a provider in config.json, preserving all other content.
-    /// Looks for the provider inside the `providers` dict.
-    /// Returns true if the file was updated.
-    @discardableResult
-    public static func saveAPIKey(providerName: String, apiKey: String) -> Bool {
-        guard var content = try? String(contentsOfFile: configPath, encoding: .utf8) else { return false }
-
-        // JSON-escape the new key so quotes/backslashes don't break the file.
-        let jsonEscaped = apiKey
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        // Also escape $ and \ for the NSRegularExpression replacement template.
-        let templateKey = NSRegularExpression.escapedTemplate(for: jsonEscaped)
-
-        func replace(pattern: String, in source: inout String) -> Bool {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.dotMatchesLineSeparators]) else {
-                return false
-            }
-            let range = NSRange(source.startIndex..., in: source)
-            guard regex.firstMatch(in: source, options: [], range: range) != nil else { return false }
-            source = regex.stringByReplacingMatches(
-                in: source,
-                options: [],
-                range: range,
-                withTemplate: "$1\(templateKey)$2"
-            )
-            return true
-        }
-
-        // Try modern `providers` dict first.
-        let escapedName = NSRegularExpression.escapedPattern(for: providerName)
-        let providersPattern = "(\"\(escapedName)\"\\s*:\\s*\\{[^}]*?\"api-key\"\\s*:\\s*\")[^\"]*(\")"
-        if replace(pattern: providersPattern, in: &content) {
-            try? content.write(toFile: configPath, atomically: true, encoding: .utf8)
-            return true
-        }
-
-        return false
+        print("Pick OpenAI from the Provider menu to enter an API key.")
     }
 
     /// Writes (or updates) a top-level string field in config.json, preserving all other content.

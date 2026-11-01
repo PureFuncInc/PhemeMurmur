@@ -7,8 +7,6 @@ public struct OpenAIProvider: TranscriptionProvider {
     /// Reasoning effort for the default post-process model. Its own default is
     /// "medium", which is slow for a one-sentence rewrite.
     public static let defaultPostProcessReasoningEffort = "low"
-    /// Placeholder written by Config.defaultConfigContent for a fresh install.
-    private static let placeholderKey = "sk-proj-xxx"
 
     public let apiKey: String
     public let modelName: String
@@ -30,7 +28,7 @@ public struct OpenAIProvider: TranscriptionProvider {
     public var requiresAPIKey: Bool { true }
 
     public var isKeyConfigured: Bool {
-        !apiKey.isEmpty && apiKey != Self.placeholderKey
+        !apiKey.isEmpty
     }
 
     func makeTranscriptionRequest(fileURL: URL, language: String?) throws -> URLRequest {
