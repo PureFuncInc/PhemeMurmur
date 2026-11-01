@@ -1,7 +1,8 @@
-import AVFoundation
+@preconcurrency import AVFoundation
 import Foundation
+import PhemeMurmurCore
 
-final class AudioRecorder {
+final class AudioRecorder: @unchecked Sendable {
     private let engine = AVAudioEngine()
     private var buffers: [AVAudioPCMBuffer] = []
     private let lock = NSLock()

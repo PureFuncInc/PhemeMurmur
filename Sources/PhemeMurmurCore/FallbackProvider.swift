@@ -3,24 +3,24 @@ import Foundation
 /// Wraps a chain of single-model `TranscriptionProvider` instances and walks
 /// the chain on HTTP 429/503 responses. Each model that hits these gets a 60-second
 /// cooldown; requests during cooldown skip that model automatically.
-final class FallbackProvider: TranscriptionProvider {
+public final class FallbackProvider: TranscriptionProvider, @unchecked Sendable {
     private let chain: [String]
-    private let factory: (String) -> TranscriptionProvider
+    private let factory: @Sendable (String) -> TranscriptionProvider
     private let cooldown: TimeInterval
     private let lock = NSLock()
     private var cooledUntil: [String: Date] = [:]
     private var lastUsedModel: String?
 
-    init(chain: [String],
-         cooldown: TimeInterval = 60,
-         factory: @escaping (String) -> TranscriptionProvider) {
+    public init(chain: [String],
+                cooldown: TimeInterval = 60,
+                factory: @escaping @Sendable (String) -> TranscriptionProvider) {
         precondition(!chain.isEmpty, "FallbackProvider requires at least one model")
         self.chain = chain
         self.cooldown = cooldown
         self.factory = factory
     }
 
-    var modelName: String {
+    public var modelName: String {
         lock.lock()
         defer { lock.unlock() }
         if let last = lastUsedModel { return last }
@@ -31,11 +31,15 @@ final class FallbackProvider: TranscriptionProvider {
         return chain[0]
     }
 
-    var isKeyConfigured: Bool {
+    public var requiresAPIKey: Bool {
+        factory(chain[0]).requiresAPIKey
+    }
+
+    public var isKeyConfigured: Bool {
         factory(chain[0]).isKeyConfigured
     }
 
-    func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
+    public func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
         let available = availableModels()
         if available.isEmpty {
             throw TranscriptionError.allModelsRateLimited(retryAfter: shortestRemainingCooldown())

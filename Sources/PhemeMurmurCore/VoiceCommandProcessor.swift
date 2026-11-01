@@ -1,6 +1,6 @@
 import Foundation
 
-enum VoiceCommandProcessor {
+public enum VoiceCommandProcessor {
     private static let staticReplacements: [(trigger: String, output: String)] = [
         ("換一行", "\n"),
         ("空一行", "\n\n"),
@@ -22,7 +22,7 @@ enum VoiceCommandProcessor {
 
     private static let boundaryClass = "[ \\t\\u3000，。、,.]*"
 
-    static func process(_ text: String) -> String {
+    public static func process(_ text: String) -> String {
         let allTriggers = (staticReplacements + numberedPoints)
             .sorted { $0.trigger.count > $1.trigger.count }
 

@@ -1,6 +1,7 @@
-import ApplicationServices
+@preconcurrency import ApplicationServices
 import CoreGraphics
 import Foundation
+import PhemeMurmurCore
 import os
 
 enum HotkeyKey: String, CaseIterable {
@@ -59,7 +60,7 @@ enum HotkeyKey: String, CaseIterable {
     }
 }
 
-final class HotkeyManager {
+final class HotkeyManager: @unchecked Sendable {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var lastToggleTime: CFAbsoluteTime = 0

@@ -1,4 +1,5 @@
 import AppKit
+import PhemeMurmurCore
 import ServiceManagement
 
 enum LaunchAtLoginState: Equatable {
@@ -29,6 +30,7 @@ enum LaunchAtLoginError: Error, LocalizedError {
 /// State is read plist-first: if `~/Library/LaunchAgents/com.purefuncinc.PhemeMurmur.plist`
 /// exists, the LaunchAgent path is in effect and we report `.enabled` regardless of what
 /// SMAppService says. Otherwise we read from SMAppService.
+@MainActor
 final class LaunchAtLogin {
     private let plistURL: URL
     private(set) var state: LaunchAtLoginState

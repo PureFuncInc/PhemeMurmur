@@ -1,18 +1,21 @@
 import Foundation
 
-struct OpenAIProvider: TranscriptionProvider {
-    static let defaultModel = "gpt-4o-mini-transcribe-2025-12-15"
-    static let defaultPostProcessBaseURL = "https://api.openai.com/v1"
-    static let defaultPostProcessModel = "gpt-5-nano"
+public struct OpenAIProvider: TranscriptionProvider {
+    public static let defaultModel = "gpt-transcribe"
+    public static let defaultPostProcessBaseURL = "https://api.openai.com/v1"
+    public static let defaultPostProcessModel = "gpt-5.6-luna"
+    /// Reasoning effort for the default post-process model. Its own default is
+    /// "medium", which is slow for a one-sentence rewrite.
+    public static let defaultPostProcessReasoningEffort = "low"
     /// Placeholder written by Config.defaultConfigContent for a fresh install.
     private static let placeholderKey = "sk-proj-xxx"
 
-    let apiKey: String
-    let modelName: String
-    let postProcessBaseURL: String
-    let postProcessModel: String
+    public let apiKey: String
+    public let modelName: String
+    public let postProcessBaseURL: String
+    public let postProcessModel: String
 
-    init(
+    public init(
         apiKey: String,
         model: String = Self.defaultModel,
         postProcessBaseURL: String = Self.defaultPostProcessBaseURL,
@@ -24,11 +27,13 @@ struct OpenAIProvider: TranscriptionProvider {
         self.postProcessModel = postProcessModel
     }
 
-    var isKeyConfigured: Bool {
+    public var requiresAPIKey: Bool { true }
+
+    public var isKeyConfigured: Bool {
         !apiKey.isEmpty && apiKey != Self.placeholderKey
     }
 
-    func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
+    func makeTranscriptionRequest(fileURL: URL, language: String?) throws -> URLRequest {
         let model = self.modelName
         let boundary = UUID().uuidString
         let url = URL(string: "https://api.openai.com/v1/audio/transcriptions")!
@@ -49,8 +54,10 @@ struct OpenAIProvider: TranscriptionProvider {
         body.appendUTF8("\(model)\r\n")
 
         if let language {
+            // GPT-Transcribe replaces the singular language field with an array.
+            let languageField = model == "gpt-transcribe" ? "languages[]" : "language"
             body.appendUTF8("--\(boundary)\r\n")
-            body.appendUTF8("Content-Disposition: form-data; name=\"language\"\r\n\r\n")
+            body.appendUTF8("Content-Disposition: form-data; name=\"\(languageField)\"\r\n\r\n")
             body.appendUTF8("\(language)\r\n")
         }
 
@@ -61,6 +68,11 @@ struct OpenAIProvider: TranscriptionProvider {
         body.appendUTF8("\r\n--\(boundary)--\r\n")
 
         request.httpBody = body
+        return request
+    }
+
+    public func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
+        let request = try makeTranscriptionRequest(fileURL: fileURL, language: language)
 
         let data: Data
         let response: URLResponse
@@ -111,13 +123,19 @@ struct OpenAIProvider: TranscriptionProvider {
         request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
-        let body: [String: Any] = [
+        var body: [String: Any] = [
             "model": postProcessModel,
             "messages": [
                 ["role": "system", "content": instruction],
                 ["role": "user", "content": text],
             ],
         ]
+        // Only the default model is known to accept reasoning_effort. A model
+        // set via "post-process" (gpt-4o-mini, a local LM Studio model, …) may
+        // reject the request outright if it is present.
+        if postProcessModel == Self.defaultPostProcessModel {
+            body["reasoning_effort"] = Self.defaultPostProcessReasoningEffort
+        }
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
 
         let data: Data

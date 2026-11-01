@@ -1,24 +1,24 @@
 import Foundation
 
-struct TranscriptionResponse: Decodable {
-    let text: String
+public struct TranscriptionResponse: Decodable {
+    public let text: String
 }
 
-struct APIErrorResponse: Decodable {
-    let error: APIErrorDetail
+public struct APIErrorResponse: Decodable {
+    public let error: APIErrorDetail
 }
 
-struct APIErrorDetail: Decodable {
-    let message: String
+public struct APIErrorDetail: Decodable {
+    public let message: String
 }
 
-enum TranscriptionError: Error, LocalizedError {
+public enum TranscriptionError: Error, LocalizedError {
     case fileReadError
     case httpError(Int, String)
     case decodingError
     case allModelsRateLimited(retryAfter: Int)
 
-    var errorDescription: String? {
+    public var errorDescription: String? {
         switch self {
         case .fileReadError: return "Cannot read audio file"
         case .httpError(let code, let msg): return "API error (\(code)): \(msg)"
@@ -29,8 +29,8 @@ enum TranscriptionError: Error, LocalizedError {
     }
 }
 
-enum TranscriptionService {
-    static func checkHTTPResponse(_ response: URLResponse, data: Data) throws {
+public enum TranscriptionService {
+    public static func checkHTTPResponse(_ response: URLResponse, data: Data) throws {
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TranscriptionError.httpError(0, "Invalid response")
         }
@@ -46,7 +46,7 @@ enum TranscriptionService {
 }
 
 extension Data {
-    mutating func appendUTF8(_ string: String) {
+    public mutating func appendUTF8(_ string: String) {
         if let data = string.data(using: .utf8) {
             append(data)
         }

@@ -60,7 +60,6 @@ install: app
 	ditto -c -k --sequesterRsrc --keepParent $(APP_BUNDLE) $(DIST_DIR)/$(ZIP_NAME)
 	@echo "Created $(DIST_DIR)/$(ZIP_NAME)"
 	rm -rf $(APP_BUNDLE)
-	rm -f ~/.config/pheme-murmur/.onboarding-done
 	open /Applications/$(APP_BUNDLE)
 
 clean:

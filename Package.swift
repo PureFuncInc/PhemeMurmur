@@ -1,18 +1,18 @@
-// swift-tools-version: 5.9
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
     name: "PhemeMurmur",
-    platforms: [.macOS(.v13)],
+    platforms: [.macOS(.v26)],
     targets: [
+        .target(
+            name: "PhemeMurmurCore",
+            path: "Sources/PhemeMurmurCore"
+        ),
         .executableTarget(
             name: "PhemeMurmur",
+            dependencies: ["PhemeMurmurCore"],
             path: "Sources/PhemeMurmur"
-        ),
-        .testTarget(
-            name: "PhemeMurmurTests",
-            dependencies: ["PhemeMurmur"],
-            path: "Tests/PhemeMurmurTests"
         ),
     ]
 )

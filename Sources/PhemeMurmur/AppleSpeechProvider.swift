@@ -1,11 +1,11 @@
 import AVFoundation
 import Foundation
+import PhemeMurmurCore
 import Speech
 
 /// On-device speech recognition using macOS 26's SpeechAnalyzer + SpeechTranscriber.
 /// No API key, no network, no per-request cost. Language model assets are downloaded
 /// once per locale on first use.
-@available(macOS 26.0, *)
 struct AppleSpeechProvider: TranscriptionProvider {
     static let modelIdentifier = "apple-speech-on-device"
 
@@ -15,6 +15,7 @@ struct AppleSpeechProvider: TranscriptionProvider {
         self.modelName = model
     }
 
+    var requiresAPIKey: Bool { false }
     var isKeyConfigured: Bool { true }
 
     func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
@@ -91,16 +92,13 @@ struct AppleSpeechProvider: TranscriptionProvider {
 enum AppleSpeechError: Error, LocalizedError {
     case promptNotSupported
     case localeUnsupported(String)
-    case requiresMacOS26
 
     var errorDescription: String? {
         switch self {
         case .promptNotSupported:
-            return "Apple provider does not support post-processing prompts. Choose a template without a 'prompt' field, or switch to OpenAI/Gemini."
+            return "Apple provider does not support post-processing prompts. Choose a template without a 'prompt' field, or switch to OpenAI."
         case .localeUnsupported(let id):
             return "Apple Speech does not support locale \(id) on this device."
-        case .requiresMacOS26:
-            return "Apple provider requires macOS 26 or later."
         }
     }
 }

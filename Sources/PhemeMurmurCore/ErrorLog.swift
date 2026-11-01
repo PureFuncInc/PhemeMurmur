@@ -1,20 +1,20 @@
 import Foundation
 
-enum ErrorLog {
+public enum ErrorLog {
     private static let lock = NSLock()
     private static let retentionDays = 7
-    private static let formatter: ISO8601DateFormatter = {
+    private nonisolated(unsafe) static let formatter: ISO8601DateFormatter = {
         let f = ISO8601DateFormatter()
         f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
         return f
     }()
 
-    static var logPath: String {
+    public static var logPath: String {
         let configDir = (Config.configPath as NSString).deletingLastPathComponent
         return (configDir as NSString).appendingPathComponent("error.log")
     }
 
-    static func append(context: String, message: String) {
+    public static func append(context: String, message: String) {
         let now = Date()
         let line = "ts=\(formatter.string(from: now)) context=\(sanitize(context)) message=\(sanitize(message))\n"
 

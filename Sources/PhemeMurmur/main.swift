@@ -1,5 +1,7 @@
 import AppKit
+import PhemeMurmurCore
 
+@MainActor
 class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var statusItem: NSStatusItem!
     private var statusMenu: NSMenu!
@@ -18,7 +20,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private let hotkeyManager = HotkeyManager()
     private let audioRecorder = AudioRecorder()
-    private let onboarding = OnboardingWindow()
     private let launchAtLogin = LaunchAtLogin()
     private var providers: [String: TranscriptionProvider] = [:]
     private var activeProviderName: String = ""
@@ -43,9 +44,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.createDefaultConfigIfNeeded()
         installEditMenu()
 
-        onboarding.showIfNeeded { [weak self] in
-            self?.setupApp()
-        }
+        setupApp()
     }
 
     /// Installs a minimal main menu containing an Edit submenu with standard Cut/Copy/Paste/Select All
@@ -149,11 +148,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if let config = Config.loadConfig() {
             let entries = config.resolvedProviders
             for (name, entry) in entries {
-                if let provider = Self.makeProvider(for: entry) {
-                    providers[name] = provider
-                } else {
-                    print("Skipped provider \(name): unavailable on this macOS version")
-                }
+                providers[name] = Self.makeProvider(for: entry)
             }
             Self.injectBuiltInProvidersIfNeeded(into: &providers)
             if let active = config.resolvedActiveProvider, providers[active] != nil {
@@ -175,7 +170,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             if let threshold = config.silenceThreshold {
                 Config.silenceThreshold = threshold
             }
-            currentHotkey = config.resolvedHotkey
+            currentHotkey = HotkeyKey(rawValue: config.resolvedHotkey) ?? .rightShift
             hotkeyManager.key = currentHotkey
             promptTemplates = config.promptTemplates ?? [:]
             if let saved = config.activePromptTemplate, promptTemplates[saved] != nil {
@@ -251,16 +246,18 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func pollForAccessibility() {
         accessibilityPollTimer = Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] timer in
-            guard let self else { timer.invalidate(); return }
+            guard self != nil else { timer.invalidate(); return }
             guard HotkeyManager.checkAccessibility() else { return }
             timer.invalidate()
-            self.accessibilityPollTimer = nil
-            self.startHotkeyMonitor()
-            // Only restore Idle status if there is no pre-existing provider error
-            if !self.providers.isEmpty {
-                self.updateStatus("Idle")
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                self.accessibilityPollTimer = nil
+                self.startHotkeyMonitor()
+                if !self.providers.isEmpty {
+                    self.updateStatus("Idle")
+                }
+                print("Accessibility granted. Hotkey monitor started automatically.")
             }
-            print("Accessibility granted. Hotkey monitor started automatically.")
         }
     }
 
@@ -324,14 +321,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
                 let finalText = try await provider.transcribe(fileURL: fileURL, language: template?.language, prompt: template?.prompt)
-                await MainActor.run {
-                    if finalText == "__SILENCE__" {
-                        print("Silence detected by model, skipping paste.")
-                        self.state = .idle
-                        self.updateStatus("Idle")
-                        self.refreshProviderLabel()
-                        return
-                    }
+                if finalText == "__SILENCE__" {
+                    print("Silence detected by model, skipping paste.")
+                    self.state = .idle
+                    self.updateStatus("Idle")
+                    self.refreshProviderLabel()
+                } else {
                     let processed: String
                     if self.voiceCommandsEnabled, template?.prompt == nil {
                         processed = VoiceCommandProcessor.process(finalText)
@@ -346,14 +341,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.refreshProviderLabel()
                 }
             } catch {
-                await MainActor.run {
-                    print("Transcription failed: \(error)")
-                    ErrorLog.append(context: "transcribe", message: "\(error)")
-                    self.state = .idle
-                    self.updateStatus("Error: \(Self.truncate(error.localizedDescription))")
-                    self.showErrorIcon()
-                    self.refreshProviderLabel()
-                }
+                print("Transcription failed: \(error)")
+                ErrorLog.append(context: "transcribe", message: "\(error)")
+                self.state = .idle
+                self.updateStatus("Error: \(Self.truncate(error.localizedDescription))")
+                self.showErrorIcon()
+                self.refreshProviderLabel()
             }
 
             // Clean up temp file
@@ -369,7 +362,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             item.state = (name == activeProviderName) ? .on : .off
             providerSubmenu.addItem(item)
         }
-        if !activeProviderName.isEmpty {
+        if activeProvider?.requiresAPIKey == true {
             providerSubmenu.addItem(NSMenuItem.separator())
             let setKeyItem = NSMenuItem(
                 title: "Set API Key for \(activeProviderName)…",
@@ -383,21 +376,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func refreshProviderLabel() {
         if let provider = activeProvider {
-            let model = Self.displayModelName(provider.modelName)
-            providerMenuItem?.title = "Provider: \(activeProviderName) (\(model))"
+            providerMenuItem?.title = "Provider: \(activeProviderName) (\(provider.modelName))"
         } else {
             providerMenuItem?.title = "Provider"
         }
-    }
-
-    private static func displayModelName(_ model: String) -> String {
-        if let range = model.range(of: "-transcribe") {
-            return String(model[..<range.lowerBound])
-        }
-        if model.hasSuffix("-preview") {
-            return String(model.dropLast("-preview".count))
-        }
-        return model
     }
 
     @objc private func selectProvider(_ sender: NSMenuItem) {
@@ -435,12 +417,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         _ = runAPIKeyPrompt(
             for: name,
             messageText: "Set API Key for \(name)",
-            informativeText: "The key will be saved to config.jsonc.",
+            informativeText: "The key will be saved to config.json.",
             style: .informational
         )
     }
 
-    /// Shows an API-key input alert for `name`, writes the key to config.jsonc on Save, and reloads
+    /// Shows an API-key input alert for `name`, writes the key to config.json on Save, and reloads
     /// the provider instance so the new key takes effect immediately. Returns true iff a key was saved.
     @discardableResult
     private func runAPIKeyPrompt(
@@ -471,7 +453,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if !Config.saveAPIKey(providerName: name, apiKey: newKey) {
             let err = NSAlert()
             err.messageText = "Failed to save API key"
-            err.informativeText = "Could not locate provider \"\(name)\" in config.jsonc. Please edit the file manually."
+            err.informativeText = "Could not locate provider \"\(name)\" in config.json. Please edit the file manually."
             err.alertStyle = .warning
             err.runModal()
             return false
@@ -487,9 +469,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         guard let config = Config.loadConfig() else { return }
         providers.removeAll()
         for (n, entry) in config.resolvedProviders {
-            if let provider = Self.makeProvider(for: entry) {
-                providers[n] = provider
-            }
+            providers[n] = Self.makeProvider(for: entry)
         }
         Self.injectBuiltInProvidersIfNeeded(into: &providers)
         if providers[activeProviderName] == nil {
@@ -498,10 +478,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     }
 
     /// Auto-registers built-in providers that don't require any config (currently
-    /// only Apple on-device speech on macOS 26+). Users who upgrade from an older
-    /// version still see these in the menu without editing config.jsonc.
+    /// only Apple on-device speech). Users who upgrade from an older
+    /// version still see these in the menu without editing config.json.
     private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider]) {
-        if #available(macOS 26.0, *), providers["Apple"] == nil {
+        if providers["Apple"] == nil {
             providers["Apple"] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
                 AppleSpeechProvider(model: model)
             }
@@ -543,7 +523,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
               let key = HotkeyKey(rawValue: raw) else { return }
         currentHotkey = key
         hotkeyManager.key = key
-        Config.saveHotkey(key)
+        Config.saveHotkey(key.rawValue)
         rebuildHotkeySubmenu()
         print("Hotkey changed to: \(key.displayName)")
     }
@@ -562,7 +542,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
-    private static func makeProvider(for entry: ProviderEntry) -> TranscriptionProvider? {
+    private static func makeProvider(for entry: ProviderEntry) -> TranscriptionProvider {
         let chain = entry.type.fallbackChain
         let apiKey = entry.apiKey ?? ""
         switch entry.type {
@@ -577,12 +557,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     postProcessModel: postProcessModel
                 )
             }
-        case .gemini:
-            return FallbackProvider(chain: chain) { model in
-                GeminiProvider(apiKey: apiKey, model: model)
-            }
         case .apple:
-            guard #available(macOS 26.0, *) else { return nil }
             return FallbackProvider(chain: chain) { model in
                 AppleSpeechProvider(model: model)
             }
