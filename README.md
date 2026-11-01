@@ -55,9 +55,9 @@ It is plain JSON, so comments are not allowed. Options:
 | --- | --- |
 | `providers` | Map of provider name → `{ "type": "openai" \| "apple" }`. `apple` uses on-device speech recognition and needs no key; `openai` reads its key from the Keychain under the provider name. |
 | `providers.<name>.post-process` | Optional, OpenAI only: `{ "base-url": "http://localhost:1234/v1", "model": "openai/gpt-oss-20b" }` routes post-processing (chat completions) to an OpenAI-compatible endpoint such as LM Studio. Defaults to OpenAI. |
-| `providers.<name>.enabled` | `true` marks the provider in use; picking another one from the menu bar moves the flag there. Without it, the first provider by name is used. |
+| `providers.<name>.active` | `true` marks the provider in use; picking another one from the menu bar moves the flag there. Without it, the first provider by name is used. |
 | `prompt-templates` | Map of template name → `{ "language": "zh", "prompt": "..." }`. `language` is the ISO-639-1 input language; if `prompt` is set, the transcription is post-processed by an LLM. |
-| `prompt-templates.<name>.enabled` | `true` marks the template in use; picking another one from the menu bar moves the flag there. Without it, `zh_TW` is used. |
+| `prompt-templates.<name>.active` | `true` marks the template in use; picking another one from the menu bar moves the flag there. Without it, `zh_TW` is used. |
 | `hotkey` | `right-shift` (default), `right-option`, `right-control`, `right-command`, or `fn`. |
 | `prefix` | Text prepended to every transcription result. |
 | `silence-threshold` | RMS energy threshold (0.0–1.0); quieter recordings are discarded. `0` disables it (e.g. `0.003` to enable). |

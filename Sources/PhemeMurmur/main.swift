@@ -12,9 +12,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var providerSubmenu: NSMenu!
     private var hotkeyMenuItem: NSMenuItem!
     private var hotkeySubmenu: NSMenu!
-    private var configLogsMenuItem: NSMenuItem!
-    private var configLogsSubmenu: NSMenu!
-    private var showErrorLogMenuItem: NSMenuItem!
     private var launchAtLoginItem: NSMenuItem!
     private var currentHotkey: HotkeyKey = .rightShift
 
@@ -101,23 +98,11 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         statusMenu.addItem(NSMenuItem.separator())
 
-        configLogsSubmenu = NSMenu()
-        configLogsMenuItem = Self.makeMenuItem(title: "Config & Logs", systemImage: "folder")
-        statusMenu.addItem(configLogsMenuItem)
-        statusMenu.setSubmenu(configLogsSubmenu, for: configLogsMenuItem)
-
-        configLogsSubmenu.addItem(Self.makeMenuItem(
-            title: "Open Config Folder",
+        statusMenu.addItem(Self.makeMenuItem(
+            title: "Open Configs & Logs Folder",
             systemImage: "folder",
             action: #selector(openConfigFolder)
         ))
-
-        showErrorLogMenuItem = Self.makeMenuItem(
-            title: "Show Error Log",
-            systemImage: "doc.text.magnifyingglass",
-            action: #selector(revealErrorLog)
-        )
-        configLogsSubmenu.addItem(showErrorLogMenuItem)
 
         statusMenu.addItem(NSMenuItem.separator())
 
@@ -359,7 +344,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for name in providers.keys.sorted() {
             let item = NSMenuItem(title: name, action: #selector(selectProvider(_:)), keyEquivalent: "")
             item.representedObject = name
-            item.state = (name == activeProviderName) ? .on : .off
+            item.image = (name == activeProviderName) ? Self.enabledImage() : nil
             providerSubmenu.addItem(item)
         }
         if activeProvider?.requiresAPIKey == true {
@@ -393,7 +378,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                 style: .warning
             )
             guard saved else {
-                // Restore the checkmark on the current active provider.
+                // Restore the green check on the current active provider.
                 rebuildProviderSubmenu()
                 return
             }
@@ -495,7 +480,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for name in promptTemplates.keys.sorted() {
             let item = NSMenuItem(title: name, action: #selector(selectPromptTemplate(_:)), keyEquivalent: "")
             item.representedObject = name
-            item.state = (name == activeTemplateName) ? .on : .off
+            item.image = (name == activeTemplateName) ? Self.enabledImage() : nil
             promptSubmenu.addItem(item)
         }
         promptMenuItem?.title = "Prompt: \(activeTemplateName)"
@@ -514,7 +499,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for key in HotkeyKey.allCases {
             let item = NSMenuItem(title: key.displayName, action: #selector(selectHotkey(_:)), keyEquivalent: "")
             item.representedObject = key.rawValue
-            item.state = (key == currentHotkey) ? .on : .off
+            item.image = (key == currentHotkey) ? Self.enabledImage() : nil
             hotkeySubmenu.addItem(item)
         }
         hotkeyMenuItem.title = "Hotkey: \(currentHotkey.shortName)"
@@ -677,15 +662,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSWorkspace.shared.open(url)
     }
 
-    @objc private func revealErrorLog() {
-        let url = URL(fileURLWithPath: ErrorLog.logPath)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
-    }
-
     func menuWillOpen(_ menu: NSMenu) {
         guard menu === statusMenu else { return }
-        let hasLog = FileManager.default.fileExists(atPath: ErrorLog.logPath)
-        showErrorLogMenuItem?.isEnabled = hasLog
         launchAtLogin.refresh()
     }
 

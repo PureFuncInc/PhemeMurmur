@@ -3,7 +3,7 @@ import Foundation
 public struct PromptTemplate: Decodable, Sendable {
     public let language: String?
     public let prompt: String?
-    public let enabled: Bool?
+    public let active: Bool?
 }
 
 public enum ProviderType: String, Decodable {
@@ -37,12 +37,12 @@ public struct PostProcessConfig: Decodable {
 public struct ProviderEntry: Decodable {
     public let type: ProviderType
     public let postProcess: PostProcessConfig?
-    public let enabled: Bool?
+    public let active: Bool?
 
     enum CodingKeys: String, CodingKey {
         case type
         case postProcess = "post-process"
-        case enabled
+        case active
     }
 }
 
@@ -72,17 +72,17 @@ public struct ConfigFile: Decodable {
         providers ?? [:]
     }
 
-    /// Resolves the default active provider name: the entry marked `"enabled": true`,
+    /// Resolves the default active provider name: the entry marked `"active": true`,
     /// otherwise the first sorted key.
     public var resolvedActiveProvider: String? {
         let resolved = resolvedProviders
-        let enabled = resolved.filter { $0.value.enabled == true }.keys.sorted()
-        return enabled.first ?? resolved.keys.sorted().first
+        let active = resolved.filter { $0.value.active == true }.keys.sorted()
+        return active.first ?? resolved.keys.sorted().first
     }
 
-    /// The prompt template marked `"enabled": true`, if any.
+    /// The prompt template marked `"active": true`, if any.
     public var resolvedActivePromptTemplate: String? {
-        (promptTemplates ?? [:]).filter { $0.value.enabled == true }.keys.sorted().first
+        (promptTemplates ?? [:]).filter { $0.value.active == true }.keys.sorted().first
     }
 
     /// Defaults to false: feature must be explicitly opted into.
@@ -108,14 +108,14 @@ public enum Config {
     static let defaultConfigContent = """
 {
     "providers": {
-        "Apple": { "enabled": true, "type": "apple" },
+        "Apple": { "active": true, "type": "apple" },
         "OpenAI": { "type": "openai" }
     },
     "hotkey": "right-shift",
     "prefix": "",
     "silence-threshold": 0,
     "prompt-templates": {
-        "zh_TW": { "enabled": true, "language": "zh" },
+        "zh_TW": { "active": true, "language": "zh" },
         "zh_TW-en_US": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }
     },
     "voice-commands": false
@@ -160,26 +160,26 @@ public enum Config {
         saveTopLevelStringField("hotkey", value: rawValue)
     }
 
-    /// Marks the provider with `"enabled": true` in config.json and clears it from the others.
+    /// Marks the provider with `"active": true` in config.json and clears it from the others.
     public static func saveActiveProvider(_ name: String) {
-        saveEnabledEntry(name, inSection: "providers")
+        saveActiveEntry(name, inSection: "providers")
     }
 
-    /// Marks the prompt template with `"enabled": true` in config.json and clears it from the others.
+    /// Marks the prompt template with `"active": true` in config.json and clears it from the others.
     public static func saveActivePromptTemplate(_ name: String) {
-        saveEnabledEntry(name, inSection: "prompt-templates")
+        saveActiveEntry(name, inSection: "prompt-templates")
     }
 
-    private static func saveEnabledEntry(_ name: String, inSection section: String) {
+    private static func saveActiveEntry(_ name: String, inSection section: String) {
         guard let content = try? String(contentsOfFile: configPath, encoding: .utf8),
-              let updated = enablingEntry(name, inSection: section, of: content) else { return }
+              let updated = activatingEntry(name, inSection: section, of: content) else { return }
         try? updated.write(toFile: configPath, atomically: true, encoding: .utf8)
     }
 
-    /// Returns `content` with `"enabled": true` on the `name` entry of the top-level `section`
-    /// object and the `enabled` key removed from its siblings. All other text is left untouched
+    /// Returns `content` with `"active": true` on the `name` entry of the top-level `section`
+    /// object and the `active` key removed from its siblings. All other text is left untouched
     /// so the file keeps its formatting and key order. Returns nil if the entry isn't found.
-    static func enablingEntry(_ name: String, inSection section: String, of content: String) -> String? {
+    static func activatingEntry(_ name: String, inSection section: String, of content: String) -> String? {
         var bytes = Array(content.utf8)
         let scanner = JSONScanner(bytes: bytes)
         guard (try? JSONSerialization.jsonObject(with: Data(bytes))) != nil,
@@ -193,7 +193,7 @@ public enum Config {
         var edits: [(range: Range<Int>, text: String)] = []
         for entry in entries {
             guard let fields = scanner.members(ofObjectAt: entry.value.lowerBound) else { continue }
-            let index = fields.firstIndex { $0.key == "enabled" }
+            let index = fields.firstIndex { $0.key == "active" }
             if entry.keyStart == target.keyStart {
                 if let index {
                     edits.append((fields[index].value, "true"))
@@ -203,8 +203,8 @@ public enum Config {
                     let first = scanner.skipWhitespace(open)
                     let gap = String(decoding: bytes[open..<first], as: UTF8.self)
                     edits.append(fields.isEmpty
-                        ? (open..<first, " \"enabled\": true ")
-                        : (open..<open, gap + "\"enabled\": true,"))
+                        ? (open..<first, " \"active\": true ")
+                        : (open..<open, gap + "\"active\": true,"))
                 }
             } else if let index {
                 // Drop the field together with exactly one adjacent comma.
