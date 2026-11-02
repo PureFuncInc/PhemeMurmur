@@ -77,7 +77,6 @@ public struct ConfigFile: Decodable {
     public let prefix: String?
     public let promptTemplates: [String: PromptTemplate]?
     public let hotkey: HotkeyKey?
-    public let silenceThreshold: Double?
     public let voiceCommands: Bool?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
@@ -85,7 +84,6 @@ public struct ConfigFile: Decodable {
         case prefix
         case promptTemplates = "prompt-templates"
         case hotkey
-        case silenceThreshold = "silence-threshold"
         case voiceCommands = "voice-commands"
     }
 
@@ -96,19 +94,12 @@ public struct ConfigFile: Decodable {
         prefix = try container.decodeIfPresent(String.self, forKey: .prefix)
         promptTemplates = try container.decodeIfPresent([String: PromptTemplate].self, forKey: .promptTemplates)
         hotkey = try container.decodeIfPresent(HotkeyKey.self, forKey: .hotkey)
-        silenceThreshold = try container.decodeIfPresent(Double.self, forKey: .silenceThreshold)
         voiceCommands = try container.decodeIfPresent(Bool.self, forKey: .voiceCommands)
 
         if providers.isEmpty {
             throw DecodingError.dataCorruptedError(
                 forKey: .providers, in: container,
                 debugDescription: "needs at least one entry, e.g. \"Apple\": {} or \"OpenAI\": {}"
-            )
-        }
-        if let silenceThreshold, !(0...1).contains(silenceThreshold) {
-            throw DecodingError.dataCorruptedError(
-                forKey: .silenceThreshold, in: container,
-                debugDescription: "must be between 0 and 1, found \(silenceThreshold)"
             )
         }
         let activeEntries: [(CodingKeys, [String])] = [
@@ -142,11 +133,6 @@ public struct ConfigFile: Decodable {
     /// Defaults to false: feature must be explicitly opted into.
     public var resolvedVoiceCommands: Bool {
         voiceCommands ?? false
-    }
-
-    /// Defaults to 0, which turns the silence check off.
-    public var resolvedSilenceThreshold: Double {
-        silenceThreshold ?? 0
     }
 }
 
@@ -187,7 +173,6 @@ public struct ConfigError: LocalizedError {
         switch type {
         case is Bool.Type:   return "true or false"
         case is String.Type: return "a string"
-        case is Double.Type: return "a number"
         default:             return "an object"
         }
     }
@@ -229,7 +214,6 @@ public enum Config {
     public static let sampleRate: Double = 16000
     public static let channels: UInt32 = 1
     public static let minDuration: Double = 0.5
-    public nonisolated(unsafe) static var silenceThreshold: Double = 0
     public static let debounceInterval: Double = 0.4
 
     public static let defaultPromptTemplateName = "zh_TW"
@@ -247,7 +231,6 @@ public enum Config {
     },
     "hotkey": "right-shift",
     "prefix": "",
-    "silence-threshold": 0,
     "prompt-templates": {
         "zh_TW": { "active": true, "language": "zh" },
         "zh_TW-en_US": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }

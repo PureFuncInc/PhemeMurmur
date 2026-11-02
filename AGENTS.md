@@ -35,10 +35,10 @@ A provider's kind comes from its name in config.json's `providers` (`ProviderTyp
 
 ### Key components
 
-- **Config** — loads plain JSON from `~/.config/pheme-murmur/config.json` (no comments allowed). `Config.parse` rejects anything a hand edit can get wrong (unknown keys, wrong types, unsupported enum values, missing or empty `providers`, out-of-range threshold, several `active` entries) with a `ConfigError` naming the key path; `AppDelegate` re-reads the file at launch and on each hotkey press that starts recording, also rejects an active prompt template whose `prompt` the active provider can't run (`supportsPrompt`), and won't record while the file is invalid. Also handles saving individual fields (hotkey, and the `active` flag on provider / prompt-template entries) by editing the text in place to preserve the file's formatting and key order.
+- **Config** — loads plain JSON from `~/.config/pheme-murmur/config.json` (no comments allowed). `Config.parse` rejects anything a hand edit can get wrong (unknown keys, wrong types, unsupported enum values, missing or empty `providers`, several `active` entries) with a `ConfigError` naming the key path; `AppDelegate` re-reads the file at launch and on each hotkey press that starts recording, also rejects an active prompt template whose `prompt` the active provider can't run (`supportsPrompt`), and won't record while the file is invalid. Also handles saving individual fields (hotkey, and the `active` flag on provider / prompt-template entries) by editing the text in place to preserve the file's formatting and key order.
 - **Keychain** — stores each provider's API key as a generic password in the login keychain (service `com.purefuncinc.PhemeMurmur`, account = provider name). It is the only place API keys live; config.json never holds them.
-- **AudioRecorder** — `AVAudioEngine` tap converting hardware audio to 16kHz mono Float32, writes WAV via `AVAudioFile`. Validates minimum duration and RMS silence threshold.
+- **AudioRecorder** — `AVAudioEngine` tap converting hardware audio to 16kHz mono Float32, writes WAV via `AVAudioFile`. Validates minimum duration.
 - **HotkeyManager** — `CGEvent.tapCreate` listening for `flagsChanged` + `keyDown` (Esc). Configurable hotkey (`HotkeyKey` enum). Requires Accessibility permission.
 - **PasteService** — clipboard + simulated Cmd+V via `CGEvent`.
-- **VoiceCommandProcessor** — regex-based Chinese formatting commands (換一行, 空一行, 第一點…第十點).
+- **VoiceCommandProcessor** — regex-based Chinese formatting commands (換一行, 空一行, 分隔線, 第一點…第十點).
 - **LaunchAtLogin** — `SMAppService.mainApp` with LaunchAgent plist fallback for self-signed builds.

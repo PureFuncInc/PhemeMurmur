@@ -201,7 +201,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         print("Active provider: \(activeProviderName)")
         prefix = config.prefix
         voiceCommandsEnabled = config.resolvedVoiceCommands
-        Config.silenceThreshold = config.resolvedSilenceThreshold
         currentHotkey = config.resolvedHotkey
         hotkeyManager.key = currentHotkey
         promptTemplates = config.promptTemplates ?? [:]
@@ -317,12 +316,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             updateStatus("Too short (\(String(format: "%.1f", duration))s)")
             showErrorIcon()
             print("Recording too short (\(String(format: "%.1f", duration))s).")
-            return
-        case .tooQuiet(let rms):
-            state = .idle
-            updateStatus("Too quiet (RMS \(String(format: "%.3f", rms)))")
-            showErrorIcon()
-            print("Recording too quiet (RMS \(String(format: "%.4f", rms))).")
             return
         }
 
