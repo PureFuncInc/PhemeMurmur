@@ -186,19 +186,13 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     /// `prompt` the active provider can't run: the menu greys that pairing out, but a hand edit can still make it.
     private func apply(_ config: ConfigFile) throws {
         var newProviders: [String: TranscriptionProvider] = [:]
-        for (name, entry) in config.resolvedProviders {
-            newProviders[name] = Self.makeProvider(named: name, for: entry)
+        for name in config.providers.keys {
+            newProviders[name] = Self.makeProvider(named: name)
         }
-        Self.injectBuiltInProvidersIfNeeded(into: &newProviders)
-        let providerName: String
-        if let active = config.resolvedActiveProvider, newProviders[active] != nil {
-            providerName = active
-        } else {
-            providerName = newProviders.keys.sorted().first ?? ""
-        }
+        let providerName = config.resolvedActiveProvider ?? ""
         let templateName = config.resolvedActivePromptTemplate ?? Config.defaultPromptTemplateName
         if config.promptTemplates?[templateName]?.prompt != nil, newProviders[providerName]?.supportsPrompt == false {
-            throw ConfigError(message: "prompt-templates.\(templateName): has a \"prompt\", which the active provider \(providerName) can't run (only \"openai\" providers can). Mark an \"openai\" provider or a template without a \"prompt\" as \"active\".")
+            throw ConfigError(message: "prompt-templates.\(templateName): has a \"prompt\", which the active provider \(providerName) can't run (only OpenAI providers can). Mark an OpenAI provider or a template without a \"prompt\" as \"active\".")
         }
 
         providers = newProviders
@@ -511,17 +505,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return true
     }
 
-    /// Auto-registers built-in providers that don't require any config (currently
-    /// only Apple on-device speech). Users who upgrade from an older
-    /// version still see these in the menu without editing config.json.
-    private static func injectBuiltInProvidersIfNeeded(into providers: inout [String: TranscriptionProvider]) {
-        if providers["Apple"] == nil {
-            providers["Apple"] = FallbackProvider(chain: ProviderType.apple.fallbackChain) { model in
-                AppleSpeechProvider(model: model)
-            }
-        }
-    }
-
     private func rebuildPromptSubmenu() {
         promptSubmenu.removeAllItems()
         let providerSupportsPrompt = activeProvider?.supportsPrompt ?? true
@@ -582,9 +565,10 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         NSApp.orderFrontStandardAboutPanel(options: options)
     }
 
-    private static func makeProvider(named name: String, for entry: ProviderEntry) -> TranscriptionProvider {
-        let chain = entry.type.fallbackChain
-        switch entry.type {
+    private static func makeProvider(named name: String) -> TranscriptionProvider {
+        let type = ProviderType(providerName: name)
+        let chain = type.fallbackChain
+        switch type {
         case .openai:
             let apiKey = Keychain.apiKey(for: name) ?? ""
             return FallbackProvider(chain: chain) { model in

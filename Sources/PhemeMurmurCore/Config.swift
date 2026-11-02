@@ -20,12 +20,14 @@ public struct PromptTemplate: Decodable, Sendable {
     }
 }
 
-public enum ProviderType: String, CaseIterable, Decodable {
+/// What a provider runs on, implied by its name in config.json: `"Apple"` is on-device speech
+/// recognition, and any other name is an OpenAI account whose API key is in the Keychain under that name.
+public enum ProviderType: Sendable {
     case openai
     case apple
 
-    public init(from decoder: Decoder) throws {
-        self = try decoder.decodeCase(of: Self.self)
+    public init(providerName: String) {
+        self = providerName == "Apple" ? .apple : .openai
     }
 }
 
@@ -56,24 +58,22 @@ extension ProviderType {
 }
 
 public struct ProviderEntry: Decodable {
-    public let type: ProviderType
     public let active: Bool?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
-        case type
         case active
     }
 
     public init(from decoder: Decoder) throws {
         try decoder.rejectUnknownKeys(CodingKeys.self)
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        type = try container.decode(ProviderType.self, forKey: .type)
         active = try container.decodeIfPresent(Bool.self, forKey: .active)
     }
 }
 
 public struct ConfigFile: Decodable {
-    public let providers: [String: ProviderEntry]?
+    /// Every provider the menu offers, keyed by name; see `ProviderType(providerName:)`.
+    public let providers: [String: ProviderEntry]
     public let prefix: String?
     public let promptTemplates: [String: PromptTemplate]?
     public let hotkey: HotkeyKey?
@@ -92,13 +92,19 @@ public struct ConfigFile: Decodable {
     public init(from decoder: Decoder) throws {
         try decoder.rejectUnknownKeys(CodingKeys.self)
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        providers = try container.decodeIfPresent([String: ProviderEntry].self, forKey: .providers)
+        providers = try container.decode([String: ProviderEntry].self, forKey: .providers)
         prefix = try container.decodeIfPresent(String.self, forKey: .prefix)
         promptTemplates = try container.decodeIfPresent([String: PromptTemplate].self, forKey: .promptTemplates)
         hotkey = try container.decodeIfPresent(HotkeyKey.self, forKey: .hotkey)
         silenceThreshold = try container.decodeIfPresent(Double.self, forKey: .silenceThreshold)
         voiceCommands = try container.decodeIfPresent(Bool.self, forKey: .voiceCommands)
 
+        if providers.isEmpty {
+            throw DecodingError.dataCorruptedError(
+                forKey: .providers, in: container,
+                debugDescription: "needs at least one entry, e.g. \"Apple\": {} or \"OpenAI\": {}"
+            )
+        }
         if let silenceThreshold, !(0...1).contains(silenceThreshold) {
             throw DecodingError.dataCorruptedError(
                 forKey: .silenceThreshold, in: container,
@@ -106,7 +112,7 @@ public struct ConfigFile: Decodable {
             )
         }
         let activeEntries: [(CodingKeys, [String])] = [
-            (.providers, (providers ?? [:]).filter { $0.value.active == true }.keys.sorted()),
+            (.providers, providers.filter { $0.value.active == true }.keys.sorted()),
             (.promptTemplates, (promptTemplates ?? [:]).filter { $0.value.active == true }.keys.sorted()),
         ]
         for (section, names) in activeEntries where names.count > 1 {
@@ -121,17 +127,11 @@ public struct ConfigFile: Decodable {
         hotkey ?? .rightShift
     }
 
-    /// Builds the full provider map from the `providers` dict.
-    public var resolvedProviders: [String: ProviderEntry] {
-        providers ?? [:]
-    }
-
     /// Resolves the default active provider name: the entry marked `"active": true`,
     /// otherwise the first sorted key.
     public var resolvedActiveProvider: String? {
-        let resolved = resolvedProviders
-        let active = resolved.filter { $0.value.active == true }.keys.sorted()
-        return active.first ?? resolved.keys.sorted().first
+        let active = providers.filter { $0.value.active == true }.keys.sorted()
+        return active.first ?? providers.keys.sorted().first
     }
 
     /// The prompt template marked `"active": true`, if any.
@@ -151,7 +151,7 @@ public struct ConfigFile: Decodable {
 }
 
 /// Why config.json can't be used, worded for someone fixing it by hand: it names the key path
-/// (e.g. `providers.OpenAI.type`) or, for malformed JSON, the line and column.
+/// (e.g. `providers.OpenAI.active`) or, for malformed JSON, the line and column.
 public struct ConfigError: LocalizedError {
     public let message: String
 
@@ -242,8 +242,8 @@ public enum Config {
     static let defaultConfigContent = """
 {
     "providers": {
-        "Apple": { "active": true, "type": "apple" },
-        "OpenAI": { "type": "openai" }
+        "Apple": { "active": true },
+        "OpenAI": {}
     },
     "hotkey": "right-shift",
     "prefix": "",

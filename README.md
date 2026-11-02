@@ -53,7 +53,7 @@ It is plain JSON, so comments are not allowed. Options:
 
 | Key | Description |
 | --- | --- |
-| `providers` | Map of provider name → `{ "type": "openai" \| "apple" }`. `apple` uses on-device speech recognition and needs no key; `openai` reads its key from the Keychain under the provider name. |
+| `providers` | Map of provider name → `{}`; the **Provider** menu lists exactly these. `"Apple"` is on-device speech recognition and needs no key. Any other name is an OpenAI account whose key is stored in the Keychain under that name, so add one entry per key (e.g. `"OpenAI": {}`, `"OpenAI (Work)": {}`). Required, with at least one entry. |
 | `providers.<name>.active` | `true` marks the provider in use; picking another one from the menu bar moves the flag there. Without it, the first provider by name is used. |
 | `prompt-templates` | Map of template name → `{ "language": "zh", "prompt": "..." }`. `language` is the ISO-639-1 input language; if `prompt` is set, the transcription is post-processed by an LLM. |
 | `prompt-templates.<name>.active` | `true` marks the template in use; picking another one from the menu bar moves the flag there. Without it, `zh_TW` is used. |
@@ -62,7 +62,7 @@ It is plain JSON, so comments are not allowed. Options:
 | `silence-threshold` | RMS energy threshold (0.0–1.0); quieter recordings are discarded. `0` disables it (e.g. `0.003` to enable). |
 | `voice-commands` | `true` turns on local formatting commands (換行 / 空行 / 分隔線 / 第一點…第十點). Skipped when the active template has a `prompt`. |
 
-PhemeMurmur checks `config.json` at launch and again each time you press the hotkey to start recording, so edits take effect without a restart. If the file can't be used (malformed JSON, an unknown or misspelled key, a value of the wrong type, an unsupported `type` or `hotkey`, a `silence-threshold` outside 0–1, more than one `active` entry in a section, or an active prompt template with a `prompt` while the active provider is `apple`), an alert names the problem, it is logged to `error.log` next to the config, and recording stays off until the file is fixed.
+PhemeMurmur checks `config.json` at launch and again each time you press the hotkey to start recording, so edits take effect without a restart. If the file can't be used (malformed JSON, an unknown or misspelled key, a value of the wrong type, a missing or empty `providers`, an unsupported `hotkey`, a `silence-threshold` outside 0–1, more than one `active` entry in a section, or an active prompt template with a `prompt` while the active provider is `Apple`), an alert names the problem, it is logged to `error.log` next to the config, and recording stays off until the file is fixed.
 
 ## TODO
 

@@ -31,9 +31,11 @@ State machine lives in `AppDelegate`. The hotkey toggle and Esc cancel are dispa
 
 This is the minimal version, so we only keep OpenAI provider and remove other providers.
 
+A provider's kind comes from its name in config.json's `providers` (`ProviderType(providerName:)`): `"Apple"` is `AppleSpeechProvider`, any other name is an OpenAI account keyed in the Keychain by that name, so several OpenAI keys can coexist. Nothing is added implicitly: the Provider menu lists exactly the configured entries.
+
 ### Key components
 
-- **Config** — loads plain JSON from `~/.config/pheme-murmur/config.json` (no comments allowed). `Config.parse` rejects anything a hand edit can get wrong (unknown keys, wrong types, unsupported enum values, out-of-range threshold, several `active` entries) with a `ConfigError` naming the key path; `AppDelegate` re-reads the file at launch and on each hotkey press that starts recording, also rejects an active prompt template whose `prompt` the active provider can't run (`supportsPrompt`), and won't record while the file is invalid. Also handles saving individual fields (hotkey, and the `active` flag on provider / prompt-template entries) by editing the text in place to preserve the file's formatting and key order.
+- **Config** — loads plain JSON from `~/.config/pheme-murmur/config.json` (no comments allowed). `Config.parse` rejects anything a hand edit can get wrong (unknown keys, wrong types, unsupported enum values, missing or empty `providers`, out-of-range threshold, several `active` entries) with a `ConfigError` naming the key path; `AppDelegate` re-reads the file at launch and on each hotkey press that starts recording, also rejects an active prompt template whose `prompt` the active provider can't run (`supportsPrompt`), and won't record while the file is invalid. Also handles saving individual fields (hotkey, and the `active` flag on provider / prompt-template entries) by editing the text in place to preserve the file's formatting and key order.
 - **Keychain** — stores each provider's API key as a generic password in the login keychain (service `com.purefuncinc.PhemeMurmur`, account = provider name). It is the only place API keys live; config.json never holds them.
 - **AudioRecorder** — `AVAudioEngine` tap converting hardware audio to 16kHz mono Float32, writes WAV via `AVAudioFile`. Validates minimum duration and RMS silence threshold.
 - **HotkeyManager** — `CGEvent.tapCreate` listening for `flagsChanged` + `keyDown` (Esc). Configurable hotkey (`HotkeyKey` enum). Requires Accessibility permission.
