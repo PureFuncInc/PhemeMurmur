@@ -346,20 +346,20 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             do {
                 let template = self.promptTemplates[self.activeTemplateName]
                 print("Using template: \(self.activeTemplateName) (language: \(template?.language ?? "auto"), prompt: \(template?.prompt ?? "none"))")
-                let finalText = try await provider.transcribe(fileURL: fileURL, language: template?.language, prompt: template?.prompt)
-                if finalText == "__SILENCE__" {
+                let transcript = try await provider.transcribe(fileURL: fileURL, language: template?.language)
+                if transcript == "__SILENCE__" {
                     print("Silence detected by model, skipping paste.")
                     self.state = .idle
                     self.updateStatus("Idle")
                     self.refreshProviderLabel()
                 } else {
-                    let processed: String
-                    if template?.prompt == nil {
-                        processed = VoiceCommandProcessor.process(finalText, commands: self.voiceCommands)
-                    } else {
-                        processed = finalText
+                    // Voice commands run first, while their Chinese trigger words are still in the transcript,
+                    // so a template's prompt gets text that already has the dictated line breaks and numbering.
+                    var text = VoiceCommandProcessor.process(transcript, commands: self.voiceCommands)
+                    if let prompt = template?.prompt {
+                        text = try await provider.postProcess(text: text, prompt: prompt)
                     }
-                    let output = (self.prefix ?? "") + processed
+                    let output = (self.prefix ?? "") + text
                     print(">>> \(output)")
                     PasteService.pasteText(output)
                     self.state = .idle
@@ -529,7 +529,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.saveActivePromptTemplate(name)
         rebuildPromptSubmenu()
         rebuildProviderSubmenu()
-        rebuildVoiceCommandSubmenu()
         print("Switched prompt template to: \(name)")
     }
 
@@ -556,16 +555,6 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     private func rebuildVoiceCommandSubmenu() {
         voiceCommandSubmenu.removeAllItems()
-        // Voice commands only format a raw transcript, so a template with a post-processing prompt skips them.
-        // They stay toggleable: the setting is merely inert until a template without a prompt is picked.
-        let skipped = promptTemplates[activeTemplateName]?.prompt != nil
-        if skipped {
-            let note = NSMenuItem(title: "Skipped: \(activeTemplateName) has a prompt", action: nil, keyEquivalent: "")
-            note.image = Self.infoImage()
-            note.isEnabled = false
-            voiceCommandSubmenu.addItem(note)
-            voiceCommandSubmenu.addItem(NSMenuItem.separator())
-        }
         for command in VoiceCommand.allCases {
             let item = NSMenuItem(title: command.displayName, action: #selector(toggleVoiceCommand(_:)), keyEquivalent: "")
             item.representedObject = command.rawValue
@@ -579,7 +568,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         case VoiceCommand.allCases.count: summary = "All"
         default:                          summary = "\(voiceCommands.count)/\(VoiceCommand.allCases.count)"
         }
-        voiceCommandMenuItem.title = "Voice Commands: \(summary)" + (skipped && !voiceCommands.isEmpty ? " (skipped)" : "")
+        voiceCommandMenuItem.title = "Voice Commands: \(summary)"
     }
 
     @objc private func toggleVoiceCommand(_ sender: NSMenuItem) {

@@ -25,7 +25,7 @@ State machine lives in `AppDelegate`. The hotkey toggle and Esc cancel are dispa
 
 ### Provider system
 
-`TranscriptionProvider` protocol (`transcribe(fileURL:language:prompt:)`) with three implementations:
+`TranscriptionProvider` protocol (`transcribe(fileURL:language:)`, then `postProcess(text:prompt:)` when the active prompt template has a `prompt`) with three implementations:
 
 - **OpenAIProvider** — Audio Transcriptions API (default model in `OpenAIProvider.defaultModel`), optional post-processing via chat completions when the active prompt template has a `prompt`
 
@@ -40,5 +40,5 @@ A provider's kind comes from its name in config.json's `providers` (`ProviderTyp
 - **AudioRecorder** — `AVAudioEngine` tap converting hardware audio to 16kHz mono Float32, writes WAV via `AVAudioFile`. Validates minimum duration.
 - **HotkeyManager** — `CGEvent.tapCreate` listening for `flagsChanged` + `keyDown` (Esc). Configurable hotkey (`HotkeyKey` enum). Requires Accessibility permission.
 - **PasteService** — clipboard + simulated Cmd+V via `CGEvent`.
-- **VoiceCommandProcessor** — regex-based Chinese formatting commands, grouped into the `VoiceCommand` cases that config.json's `voice-commands` array and the Voice Commands menu turn on one by one: `new-line` (換一行), `blank-line` (空一行), `divider` (分隔線), `numbered-points` (第一點…第十點). Unlike the single-choice Provider / Prompt / Hotkey menus, it is multi-select; it notes when the active prompt template's `prompt` skips the commands but leaves them toggleable.
+- **VoiceCommandProcessor** — regex-based Chinese formatting commands, grouped into the `VoiceCommand` cases that config.json's `voice-commands` array and the Voice Commands menu turn on one by one: `new-line` (換一行), `blank-line` (空一行), `divider` (分隔線), `numbered-points` (第一點…第十點). Unlike the single-choice Provider / Prompt / Hotkey menus, it is multi-select. `AppDelegate` runs the commands on the raw transcript before `postProcess`, while their trigger words are still there, so a template's `prompt` gets already-formatted text.
 - **LaunchAtLogin** — `SMAppService.mainApp` with LaunchAgent plist fallback for self-signed builds.

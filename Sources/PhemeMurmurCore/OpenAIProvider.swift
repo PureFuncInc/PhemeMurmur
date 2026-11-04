@@ -61,7 +61,7 @@ public struct OpenAIProvider: TranscriptionProvider {
         return request
     }
 
-    public func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
+    public func transcribe(fileURL: URL, language: String?) async throws -> String {
         let request = try makeTranscriptionRequest(fileURL: fileURL, language: language)
 
         let data: Data
@@ -96,14 +96,10 @@ public struct OpenAIProvider: TranscriptionProvider {
             text = converted
         }
 
-        if let prompt {
-            text = try await postProcess(text: text, instruction: prompt)
-        }
-
         return text
     }
 
-    private func postProcess(text: String, instruction: String) async throws -> String {
+    public func postProcess(text: String, prompt: String) async throws -> String {
         let url = URL(string: "https://api.openai.com/v1/chat/completions")!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
@@ -114,7 +110,7 @@ public struct OpenAIProvider: TranscriptionProvider {
             "model": Self.postProcessModel,
             "reasoning_effort": Self.postProcessReasoningEffort,
             "messages": [
-                ["role": "system", "content": instruction],
+                ["role": "system", "content": prompt],
                 ["role": "user", "content": text],
             ],
         ]

@@ -43,7 +43,7 @@ public final class FallbackProvider: TranscriptionProvider, @unchecked Sendable 
         factory(chain[0]).supportsPrompt
     }
 
-    public func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
+    public func transcribe(fileURL: URL, language: String?) async throws -> String {
         let available = availableModels()
         if available.isEmpty {
             throw TranscriptionError.allModelsRateLimited(retryAfter: shortestRemainingCooldown())
@@ -53,11 +53,7 @@ public final class FallbackProvider: TranscriptionProvider, @unchecked Sendable 
             let provider = factory(model)
             do {
                 print("Transcribing with model: \(model)")
-                let text = try await provider.transcribe(
-                    fileURL: fileURL,
-                    language: language,
-                    prompt: prompt
-                )
+                let text = try await provider.transcribe(fileURL: fileURL, language: language)
                 recordSuccess(model: model)
                 return text
             } catch TranscriptionError.httpError(let code, let message)
@@ -73,6 +69,11 @@ public final class FallbackProvider: TranscriptionProvider, @unchecked Sendable 
         // Every candidate 429'd during this walk — report as a single
         // aggregated rate-limit error instead of the last raw 429 message.
         throw TranscriptionError.allModelsRateLimited(retryAfter: shortestRemainingCooldown())
+    }
+
+    /// Post-processing doesn't depend on the transcription model, so it isn't part of the fallback walk.
+    public func postProcess(text: String, prompt: String) async throws -> String {
+        try await factory(chain[0]).postProcess(text: text, prompt: prompt)
     }
 
     // MARK: - Internal state helpers

@@ -19,11 +19,7 @@ struct AppleSpeechProvider: TranscriptionProvider {
     var isKeyConfigured: Bool { true }
     var supportsPrompt: Bool { false }
 
-    func transcribe(fileURL: URL, language: String?, prompt: String?) async throws -> String {
-        if prompt != nil {
-            throw AppleSpeechError.promptNotSupported
-        }
-
+    func transcribe(fileURL: URL, language: String?) async throws -> String {
         let locale = Self.resolveLocale(from: language)
 
         let supported = await SpeechTranscriber.supportedLocales
@@ -73,6 +69,10 @@ struct AppleSpeechProvider: TranscriptionProvider {
             return "__SILENCE__"
         }
         return trimmed
+    }
+
+    func postProcess(text: String, prompt: String) async throws -> String {
+        throw AppleSpeechError.promptNotSupported
     }
 
     private static func resolveLocale(from language: String?) -> Locale {
