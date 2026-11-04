@@ -393,7 +393,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for name in providers.keys.sorted() {
             let item = NSMenuItem(title: name, action: #selector(selectProvider(_:)), keyEquivalent: "")
             item.representedObject = name
-            item.image = (name == activeProviderName) ? Self.enabledImage() : nil
+            item.image = (name == activeProviderName) ? Self.selectedImage() : nil
             if templateHasPrompt, providers[name]?.supportsPrompt == false {
                 item.isEnabled = false
                 item.toolTip = "\(activeTemplateName) is OpenAI only"
@@ -516,7 +516,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
             let title = hasPrompt ? "\(name) (OpenAI only)" : name
             let item = NSMenuItem(title: title, action: #selector(selectPromptTemplate(_:)), keyEquivalent: "")
             item.representedObject = name
-            item.image = (name == activeTemplateName) ? Self.enabledImage() : nil
+            item.image = (name == activeTemplateName) ? Self.selectedImage() : nil
             item.isEnabled = !hasPrompt || providerSupportsPrompt
             promptSubmenu.addItem(item)
         }
@@ -538,7 +538,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for key in HotkeyKey.allCases {
             let item = NSMenuItem(title: key.displayName, action: #selector(selectHotkey(_:)), keyEquivalent: "")
             item.representedObject = key.rawValue
-            item.image = (key == currentHotkey) ? Self.enabledImage() : nil
+            item.image = (key == currentHotkey) ? Self.selectedImage() : nil
             hotkeySubmenu.addItem(item)
         }
         hotkeyMenuItem.title = "Hotkey: \(currentHotkey.shortName)"
@@ -569,7 +569,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         for command in VoiceCommand.allCases {
             let item = NSMenuItem(title: command.displayName, action: #selector(toggleVoiceCommand(_:)), keyEquivalent: "")
             item.representedObject = command.rawValue
-            item.image = voiceCommands.contains(command) ? Self.enabledImage() : nil
+            item.image = Self.checkboxImage(checked: voiceCommands.contains(command))
             voiceCommandSubmenu.addItem(item)
         }
 
@@ -637,18 +637,37 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
+    private static func menuSymbol(_ name: String, description: String, color: NSColor? = nil) -> NSImage? {
+        var config = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
+        if let color {
+            config = config.applying(NSImage.SymbolConfiguration(paletteColors: [color]))
+        }
+        return NSImage(systemSymbolName: name, accessibilityDescription: description)?
+            .withSymbolConfiguration(config)
+    }
+
+    /// Launch at Login only: a green status badge for a feature that is switched on.
     private static func enabledImage() -> NSImage? {
-        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGreen])
-        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        return NSImage(systemSymbolName: "checkmark.circle.fill", accessibilityDescription: "Enabled")?
-            .withSymbolConfiguration(size.applying(palette))
+        menuSymbol("checkmark.circle.fill", description: "Enabled", color: .systemGreen)
+    }
+
+    // "On" marks are green rather than the accent color: the menu's hover highlight is the
+    // accent color, so an accent-tinted symbol would vanish under the pointer.
+
+    /// Marks the one chosen item in a single-choice submenu (Provider, Prompt, Hotkey).
+    private static func selectedImage() -> NSImage? {
+        menuSymbol("circle.inset.filled", description: "Selected", color: .systemGreen)
+    }
+
+    /// Checkbox for each item in the multi-select Voice Commands submenu.
+    private static func checkboxImage(checked: Bool) -> NSImage? {
+        checked
+            ? menuSymbol("checkmark.square.fill", description: "On", color: .systemGreen)
+            : menuSymbol("square", description: "Off")
     }
 
     private static func infoImage() -> NSImage? {
-        let palette = NSImage.SymbolConfiguration(paletteColors: [.systemGray])
-        let size = NSImage.SymbolConfiguration(pointSize: 14, weight: .regular)
-        return NSImage(systemSymbolName: "info.circle", accessibilityDescription: "Needs attention")?
-            .withSymbolConfiguration(size.applying(palette))
+        menuSymbol("info.circle", description: "Needs attention", color: .systemGray)
     }
 
     private func setLaunchAtLogin(state: LaunchAtLoginState) {
