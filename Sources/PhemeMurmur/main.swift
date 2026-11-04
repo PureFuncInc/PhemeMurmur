@@ -12,6 +12,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var providerSubmenu: NSMenu!
     private var hotkeyMenuItem: NSMenuItem!
     private var hotkeySubmenu: NSMenu!
+    private var voiceCommandMenuItem: NSMenuItem!
+    private var voiceCommandSubmenu: NSMenu!
     private var launchAtLoginItem: NSMenuItem!
     private var currentHotkey: HotkeyKey = .rightShift
 
@@ -21,7 +23,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private var providers: [String: TranscriptionProvider] = [:]
     private var activeProviderName: String = ""
     private var prefix: String?
-    private var voiceCommandsEnabled: Bool = false
+    private var voiceCommands: Set<VoiceCommand> = []
     private var promptTemplates: [String: PromptTemplate] = [:]
     private var activeTemplateName: String = Config.defaultPromptTemplateName
     /// Contents of the config.json last applied, so an unchanged file isn't applied again.
@@ -98,6 +100,12 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         hotkeyMenuItem = Self.makeMenuItem(title: "Hotkey", systemImage: "keyboard")
         statusMenu.addItem(hotkeyMenuItem)
         statusMenu.setSubmenu(hotkeySubmenu, for: hotkeyMenuItem)
+
+        voiceCommandSubmenu = NSMenu()
+        voiceCommandSubmenu.autoenablesItems = false
+        voiceCommandMenuItem = Self.makeMenuItem(title: "Voice Commands", systemImage: "paragraphsign")
+        statusMenu.addItem(voiceCommandMenuItem)
+        statusMenu.setSubmenu(voiceCommandSubmenu, for: voiceCommandMenuItem)
 
         statusMenu.addItem(NSMenuItem.separator())
 
@@ -200,7 +208,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         print("Providers: \(providers.keys.sorted().joined(separator: ", "))")
         print("Active provider: \(activeProviderName)")
         prefix = config.prefix
-        voiceCommandsEnabled = config.resolvedVoiceCommands
+        voiceCommands = config.resolvedVoiceCommands
         currentHotkey = config.resolvedHotkey
         hotkeyManager.key = currentHotkey
         promptTemplates = config.promptTemplates ?? [:]
@@ -346,8 +354,8 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                     self.refreshProviderLabel()
                 } else {
                     let processed: String
-                    if self.voiceCommandsEnabled, template?.prompt == nil {
-                        processed = VoiceCommandProcessor.process(finalText)
+                    if template?.prompt == nil {
+                        processed = VoiceCommandProcessor.process(finalText, commands: self.voiceCommands)
                     } else {
                         processed = finalText
                     }
@@ -376,6 +384,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         rebuildProviderSubmenu()
         rebuildPromptSubmenu()
         rebuildHotkeySubmenu()
+        rebuildVoiceCommandSubmenu()
     }
 
     private func rebuildProviderSubmenu() {
@@ -520,6 +529,7 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.saveActivePromptTemplate(name)
         rebuildPromptSubmenu()
         rebuildProviderSubmenu()
+        rebuildVoiceCommandSubmenu()
         print("Switched prompt template to: \(name)")
     }
 
@@ -542,6 +552,46 @@ class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         Config.saveHotkey(key.rawValue)
         rebuildHotkeySubmenu()
         print("Hotkey changed to: \(key.displayName)")
+    }
+
+    private func rebuildVoiceCommandSubmenu() {
+        voiceCommandSubmenu.removeAllItems()
+        // Voice commands only format a raw transcript, so a template with a post-processing prompt skips them.
+        // They stay toggleable: the setting is merely inert until a template without a prompt is picked.
+        let skipped = promptTemplates[activeTemplateName]?.prompt != nil
+        if skipped {
+            let note = NSMenuItem(title: "Skipped: \(activeTemplateName) has a prompt", action: nil, keyEquivalent: "")
+            note.image = Self.infoImage()
+            note.isEnabled = false
+            voiceCommandSubmenu.addItem(note)
+            voiceCommandSubmenu.addItem(NSMenuItem.separator())
+        }
+        for command in VoiceCommand.allCases {
+            let item = NSMenuItem(title: command.displayName, action: #selector(toggleVoiceCommand(_:)), keyEquivalent: "")
+            item.representedObject = command.rawValue
+            item.image = voiceCommands.contains(command) ? Self.enabledImage() : nil
+            voiceCommandSubmenu.addItem(item)
+        }
+
+        let summary: String
+        switch voiceCommands.count {
+        case 0:                           summary = "Off"
+        case VoiceCommand.allCases.count: summary = "All"
+        default:                          summary = "\(voiceCommands.count)/\(VoiceCommand.allCases.count)"
+        }
+        voiceCommandMenuItem.title = "Voice Commands: \(summary)" + (skipped && !voiceCommands.isEmpty ? " (skipped)" : "")
+    }
+
+    @objc private func toggleVoiceCommand(_ sender: NSMenuItem) {
+        guard let raw = sender.representedObject as? String,
+              let command = VoiceCommand(rawValue: raw) else { return }
+        let turnedOn = voiceCommands.insert(command).inserted
+        if !turnedOn {
+            voiceCommands.remove(command)
+        }
+        Config.saveVoiceCommands(voiceCommands)
+        rebuildVoiceCommandSubmenu()
+        print("Voice command \(command.displayName) turned \(turnedOn ? "on" : "off")")
     }
 
     @objc private func showAboutPanel() {

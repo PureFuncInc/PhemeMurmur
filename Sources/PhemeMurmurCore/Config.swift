@@ -77,7 +77,8 @@ public struct ConfigFile: Decodable {
     public let prefix: String?
     public let promptTemplates: [String: PromptTemplate]?
     public let hotkey: HotkeyKey?
-    public let voiceCommands: Bool?
+    /// The voice commands turned on; each is opted into separately.
+    public let voiceCommands: [VoiceCommand]?
 
     enum CodingKeys: String, CodingKey, CaseIterable {
         case providers
@@ -94,7 +95,30 @@ public struct ConfigFile: Decodable {
         prefix = try container.decodeIfPresent(String.self, forKey: .prefix)
         promptTemplates = try container.decodeIfPresent([String: PromptTemplate].self, forKey: .promptTemplates)
         hotkey = try container.decodeIfPresent(HotkeyKey.self, forKey: .hotkey)
-        voiceCommands = try container.decodeIfPresent(Bool.self, forKey: .voiceCommands)
+        do {
+            voiceCommands = try container.decodeIfPresent([VoiceCommand].self, forKey: .voiceCommands)
+        } catch DecodingError.typeMismatch, DecodingError.valueNotFound {
+            // Also catches the old `true` / `false`, so spell out what the value looks like now.
+            let all = VoiceCommand.allCases.map { "\"\($0.rawValue)\"" }.joined(separator: ", ")
+            throw DecodingError.dataCorruptedError(
+                forKey: .voiceCommands, in: container,
+                debugDescription: "expected an array of the commands to turn on, e.g. [\(all)], or [] for none"
+            )
+        } catch DecodingError.dataCorrupted(let context) {
+            // An unknown command: name `voice-commands` rather than the element's path, `voice-commands.Index 0`.
+            throw DecodingError.dataCorruptedError(
+                forKey: .voiceCommands, in: container,
+                debugDescription: context.debugDescription
+            )
+        }
+
+        var seenVoiceCommands: Set<VoiceCommand> = []
+        for command in voiceCommands ?? [] where !seenVoiceCommands.insert(command).inserted {
+            throw DecodingError.dataCorruptedError(
+                forKey: .voiceCommands, in: container,
+                debugDescription: "\"\(command.rawValue)\" is listed more than once"
+            )
+        }
 
         if providers.isEmpty {
             throw DecodingError.dataCorruptedError(
@@ -130,9 +154,9 @@ public struct ConfigFile: Decodable {
         (promptTemplates ?? [:]).filter { $0.value.active == true }.keys.sorted().first
     }
 
-    /// Defaults to false: feature must be explicitly opted into.
-    public var resolvedVoiceCommands: Bool {
-        voiceCommands ?? false
+    /// Defaults to none: each command must be explicitly opted into.
+    public var resolvedVoiceCommands: Set<VoiceCommand> {
+        Set(voiceCommands ?? [])
     }
 }
 
@@ -235,7 +259,7 @@ public enum Config {
         "zh_TW": { "active": true, "language": "zh" },
         "zh_TW-en_US": { "language": "zh", "prompt": "Translate the following text to English. Output ONLY the English translation, nothing else." }
     },
-    "voice-commands": false
+    "voice-commands": []
 }
 """
 
@@ -285,6 +309,36 @@ public enum Config {
     /// Marks the prompt template with `"active": true` in config.json and clears it from the others.
     public static func saveActivePromptTemplate(_ name: String) {
         saveActiveEntry(name, inSection: "prompt-templates")
+    }
+
+    /// Writes (or updates) the "voice-commands" field in config.json, preserving all other content.
+    public static func saveVoiceCommands(_ commands: Set<VoiceCommand>) {
+        guard let content = try? String(contentsOfFile: configPath, encoding: .utf8),
+              let updated = settingVoiceCommands(commands, of: content) else { return }
+        try? updated.write(toFile: configPath, atomically: true, encoding: .utf8)
+    }
+
+    /// Returns `content` with the top-level "voice-commands" value replaced by `commands`, listed in
+    /// `VoiceCommand.allCases` order, or added after `{` if the key is missing. Whatever the old value
+    /// was (including the old `true` / `false`) is overwritten, and all other text is left untouched.
+    /// Returns nil if `content` isn't a JSON object.
+    static func settingVoiceCommands(_ commands: Set<VoiceCommand>, of content: String) -> String? {
+        var bytes = Array(content.utf8)
+        let scanner = JSONScanner(bytes: bytes)
+        let rootStart = scanner.skipWhitespace(0)
+        guard (try? JSONSerialization.jsonObject(with: Data(bytes))) != nil,
+              let root = scanner.members(ofObjectAt: rootStart)
+        else { return nil }
+
+        let names = VoiceCommand.allCases.filter(commands.contains).map { "\"\($0.rawValue)\"" }
+        let value = "[\(names.joined(separator: ", "))]"
+        if let existing = root.last(where: { $0.key == "voice-commands" }) {
+            bytes.replaceSubrange(existing.value, with: Array(value.utf8))
+        } else {
+            let entry = "\n    \"voice-commands\": \(value)" + (root.isEmpty ? "\n" : ",")
+            bytes.insert(contentsOf: Array(entry.utf8), at: rootStart + 1)
+        }
+        return String(decoding: bytes, as: UTF8.self)
     }
 
     private static func saveActiveEntry(_ name: String, inSection section: String) {

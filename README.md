@@ -59,9 +59,9 @@ It is plain JSON, so comments are not allowed. Options:
 | `prompt-templates.<name>.active` | `true` marks the template in use; picking another one from the menu bar moves the flag there. Without it, `zh_TW` is used. |
 | `hotkey` | `right-shift` (default), `right-option`, `right-control`, `right-command`, or `fn` (the Fn / Globe 🌐 key). |
 | `prefix` | Text prepended to every transcription result. |
-| `voice-commands` | `true` turns on local formatting commands (換一行 / 空一行 / 分隔線 / 第一點…第十點). Skipped when the active template has a `prompt`. |
+| `voice-commands` | Array of the local formatting commands to turn on: `new-line` (換一行), `blank-line` (空一行), `divider` (分隔線), `numbered-points` (第一點…第十點), e.g. `["new-line", "numbered-points"]`. Defaults to `[]` (none); the **Voice Commands** menu toggles each one. Skipped when the active template has a `prompt`. |
 
-PhemeMurmur checks `config.json` at launch and again each time you press the hotkey to start recording, so edits take effect without a restart. If the file can't be used (malformed JSON, an unknown or misspelled key, a value of the wrong type, a missing or empty `providers`, an unsupported `hotkey`, more than one `active` entry in a section, or an active prompt template with a `prompt` while the active provider is `Apple`), an alert names the problem, it is logged to `error.log` next to the config, and recording stays off until the file is fixed.
+PhemeMurmur checks `config.json` at launch and again each time you press the hotkey to start recording, so edits take effect without a restart. If the file can't be used (malformed JSON, an unknown or misspelled key, a value of the wrong type, a missing or empty `providers`, an unsupported `hotkey`, an unknown or repeated `voice-commands` entry, more than one `active` entry in a section, or an active prompt template with a `prompt` while the active provider is `Apple`), an alert names the problem, it is logged to `error.log` next to the config, and recording stays off until the file is fixed.
 
 ## TODO
 
