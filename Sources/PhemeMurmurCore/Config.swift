@@ -260,7 +260,7 @@ public enum Config {
         },
         "zh_TW-en_US": {
             "language": "zh",
-            "prompt": "Translate the input text to English. You are a professional translator specializing in Chinese-English translation. Understand the full context before translating. Preserve English terms, proper nouns, and technical vocabulary as-is. Use casual, everyday language as if spoken between friends. Keep the line breaks, blank lines, --- dividers, and numbered lists in the input where they are. Return ONLY the translated text. No labels, no explanations, no quotes."
+            "prompt": "Translate the input text to English. You are a professional translator specializing in Chinese-English translation. Understand the full context before translating. Preserve English terms, proper nouns, and technical vocabulary as-is. Use casual, everyday language, like a text message between friends. Punctuation: use only periods, commas, question marks, exclamation marks, parentheses, apostrophes, and hyphens. Never use em dashes (—) or en dashes (–). If a sentence runs long, split it into shorter sentences instead of joining clauses with dashes. Match the source's tone and plainness. Use simple, common words. Don't add rhetorical structures that aren't in the original. Return ONLY the translated text. No labels, no explanations, no quotes."
         },
         "zh_TW-Rewrite": {
             "language": "zh",
